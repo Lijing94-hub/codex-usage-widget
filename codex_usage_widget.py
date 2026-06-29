@@ -1013,26 +1013,31 @@ class CardRenderer:
         return "#FF3B30"
 
     def _draw_refresh_icon(self, draw: ImageDraw.ImageDraw, cx: int, cy: int, color: str) -> None:
-        radius = 8
-        box = self.xy(cx - radius, cy - radius, cx + radius, cy + radius)
-        draw.arc(box, start=42, end=330, fill=color, width=self.sc(1.45))
-        angle = math.radians(42)
-        tip_x = cx + radius * math.cos(angle)
-        tip_y = cy + radius * math.sin(angle)
-        tangent = angle + math.pi / 2
-        back_x = tip_x - 4.4 * math.cos(tangent)
-        back_y = tip_y - 4.4 * math.sin(tangent)
-        normal = tangent - math.pi / 2
-        points = [
-            self.xy(tip_x, tip_y),
-            self.xy(back_x + 2.2 * math.cos(normal), back_y + 2.2 * math.sin(normal)),
-            self.xy(back_x - 2.2 * math.cos(normal), back_y - 2.2 * math.sin(normal)),
-        ]
-        draw.polygon(points, fill=color)
+        # Based on the standard 24x24 refresh-cw structure used by Lucide/Feather:
+        # two circular strokes with arrow corners instead of a detached arrowhead.
+        scale = 0.72
+        stroke = 1.55
+
+        def p(x: float, y: float) -> tuple[float, float]:
+            return cx + (x - 12) * scale, cy + (y - 12) * scale
+
+        arc_box = self.xy(cx - 9 * scale, cy - 9 * scale, cx + 9 * scale, cy + 9 * scale)
+        draw.arc(arc_box, start=187, end=319, fill=color, width=self.sc(stroke))
+        draw.arc(arc_box, start=7, end=139, fill=color, width=self.sc(stroke))
+        self._rounded_polyline(draw, [p(18.8, 5.7), p(21, 8), p(16, 8)], color, stroke)
+        self._rounded_polyline(draw, [p(5.2, 18.3), p(3, 16), p(8, 16)], color, stroke)
 
     def _draw_close_icon(self, draw: ImageDraw.ImageDraw, cx: int, cy: int, color: str) -> None:
         draw.line([self.xy(cx - 4, cy - 4), self.xy(cx + 4, cy + 4)], fill=color, width=self.sc(1.6))
         draw.line([self.xy(cx + 4, cy - 4), self.xy(cx - 4, cy + 4)], fill=color, width=self.sc(1.6))
+
+    def _rounded_polyline(self, draw: ImageDraw.ImageDraw, points: list[tuple[float, float]], color: str, width: float) -> None:
+        scaled_width = self.sc(width)
+        for start, end in zip(points, points[1:]):
+            draw.line([self.xy(*start), self.xy(*end)], fill=color, width=scaled_width)
+        radius = width / 2
+        for x, y in points:
+            draw.ellipse(self.xy(x - radius, y - radius, x + radius, y + radius), fill=color)
 
     def _draw_refresh_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
         fill = "#172234" if sys.platform != "darwin" else "#182334"
