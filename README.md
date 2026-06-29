@@ -17,6 +17,7 @@ The interface is designed as a compact Windows desktop widget with a dark acryli
 - 5-hour and 7-day quota windows
 - Green remaining segment and orange used segment
 - Hover glass mode: move the mouse over the widget to make it translucent enough to see content underneath
+- System language detection with Simplified Chinese and English UI text
 - Manual refresh, auto refresh, always-on-top mode, and drag-to-position
 - Cache fallback when Codex has not written a fresh snapshot yet
 - Windows startup install/uninstall scripts

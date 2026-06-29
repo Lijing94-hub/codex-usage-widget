@@ -6,6 +6,7 @@ import contextlib
 import ctypes
 import datetime as dt
 import json
+import locale
 import math
 import os
 import pathlib
@@ -36,7 +37,7 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
     ImageTk = None
 
 
-APP_NAME = "Codex 剩余额度"
+APP_NAME = "Codex Usage Widget"
 APP_VERSION = 2
 APP_DIR = pathlib.Path(__file__).resolve().parent
 ASSET_DIR = APP_DIR / "assets"
@@ -66,12 +67,157 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "window_x": None,
     "window_y": None,
     "codex_home": None,
+    "language": "system",
 }
 
-WINDOW_LABELS = {
-    "five_hour": "5 小时",
-    "weekly": "1 周",
+TRANSLATIONS: dict[str, dict[str, str]] = {
+    "en": {
+        "app_name": "Codex Usage Widget",
+        "subtitle": "quota at a glance",
+        "status_refreshing": "Refreshing",
+        "status_unchanged": "No update",
+        "status_cache": "Cached",
+        "status_waiting": "Waiting",
+        "status_stale": "Needs refresh",
+        "status_live": "Live",
+        "window_5h": "5-hour window",
+        "window_7d": "7-day window",
+        "used": "Used",
+        "used_short": "Used",
+        "waiting": "Waiting",
+        "waiting_snapshot": "Waiting snapshot",
+        "old_snapshot": "Old snapshot",
+        "reset": " reset",
+        "unknown": "Unknown",
+        "unknown_time": "Unknown time",
+        "reset_reached": "Reset reached",
+        "minute_after": " min left",
+        "hour_after": " h left",
+        "hour_min_after": "{hours} h {mins} m left",
+        "day_after": "{days} d left",
+        "day_hour_after": "{days} d {hours} h left",
+        "just_now": "Just now",
+        "minute_ago": "{value} min ago",
+        "hour_ago": "{value} h ago",
+        "day_ago": "{value} d ago",
+        "footer_refreshing": "Refreshing",
+        "footer_unchanged": "No update · {age}",
+        "footer_updated": "Updated {age}",
+        "footer_cache": "Cached · {age}",
+        "footer_waiting": "Waiting for Codex limit data",
+        "menu_refresh": "Refresh now",
+        "menu_topmost": "Always on top / off",
+        "menu_reset": "Reset to top right",
+        "menu_quit": "Quit",
+        "pending_read": "Reading Codex limits",
+        "pending_refresh": "Finding latest limit snapshot",
+        "manual_unchanged": "Refresh finished, but no new limit snapshot was found",
+        "tk_missing": "Cannot start window UI: tkinter is unavailable.",
+        "pillow_missing": "Cannot start window UI: Pillow is unavailable.",
+        "ui_crashed": "Widget failed to start. Log file:\n{path}",
+        "arg_test": "Run self tests",
+        "arg_include_ui": "Include UI smoke test",
+        "arg_snapshot": "Print current limit snapshot",
+        "arg_make_icon": "Regenerate high-resolution icon",
+        "note_no_snapshot": "No new limit snapshot was found",
+        "note_new_record": "It will refresh after Codex writes a new record",
+        "note_unrecognized": "Limit records were found, but 5-hour or 7-day windows were not recognized",
+        "note_format_changed": "Codex local record format may have changed",
+        "note_stale": "A limit window has reached its reset point. It will update after your next Codex activity",
+        "note_local": "From local Codex limit records",
+        "note_cache": "Showing cached data",
+        "note_cache_fallback": "Live read failed, showing last successful data: {error}",
+        "note_cache_no_new": "No fresh snapshot yet, showing last successful data",
+        "note_failed": "Read failed temporarily",
+    },
+    "zh": {
+        "app_name": "Codex 用量小组件",
+        "subtitle": "额度一眼看清",
+        "status_refreshing": "刷新中",
+        "status_unchanged": "无新快照",
+        "status_cache": "缓存",
+        "status_waiting": "等待数据",
+        "status_stale": "待刷新",
+        "status_live": "实时",
+        "window_5h": "5 小时窗口",
+        "window_7d": "1 周窗口",
+        "used": "已用",
+        "used_short": "用",
+        "waiting": "等待",
+        "waiting_snapshot": "等待快照",
+        "old_snapshot": "旧快照",
+        "reset": "重置",
+        "unknown": "未知",
+        "unknown_time": "未知时间",
+        "reset_reached": "已到重置时间",
+        "minute_after": " 分钟后",
+        "hour_after": " 小时后",
+        "hour_min_after": "{hours} 小时 {mins} 分后",
+        "day_after": "{days} 天后",
+        "day_hour_after": "{days} 天 {hours} 小时后",
+        "just_now": "刚刚",
+        "minute_ago": "{value} 分钟前",
+        "hour_ago": "{value} 小时前",
+        "day_ago": "{value} 天前",
+        "footer_refreshing": "正在刷新",
+        "footer_unchanged": "无新快照 · {age}",
+        "footer_updated": "更新 {age}",
+        "footer_cache": "缓存 · {age}",
+        "footer_waiting": "等待 Codex 额度数据",
+        "menu_refresh": "立即刷新",
+        "menu_topmost": "置顶 / 取消置顶",
+        "menu_reset": "回到右上角",
+        "menu_quit": "退出",
+        "pending_read": "正在读取 Codex 额度",
+        "pending_refresh": "正在查找最新额度快照",
+        "manual_unchanged": "刷新完成，但没有新的额度快照",
+        "tk_missing": "无法启动窗口组件：tkinter 不可用。",
+        "pillow_missing": "无法启动窗口组件：Pillow 不可用。",
+        "ui_crashed": "小组件启动失败，日志在：\n{path}",
+        "arg_test": "运行自测",
+        "arg_include_ui": "自测时包含窗口烟雾测试",
+        "arg_snapshot": "打印当前读取到的额度快照",
+        "arg_make_icon": "重新生成高分辨率图标",
+        "note_no_snapshot": "没有找到新的额度快照",
+        "note_new_record": "Codex 写入新记录后会自动刷新",
+        "note_unrecognized": "读到了额度记录，但没有识别出 5 小时或 1 周窗口",
+        "note_format_changed": "Codex 记录格式可能更新了",
+        "note_stale": "额度窗口已经到过重置点，继续一次 Codex 后会更新",
+        "note_local": "来自 Codex 本地额度记录",
+        "note_cache": "显示缓存数据",
+        "note_cache_fallback": "当前读取失败，显示上次成功数据：{error}",
+        "note_cache_no_new": "暂时没读到新快照，显示上次成功数据",
+        "note_failed": "暂时读取失败",
+    },
 }
+
+
+def system_language() -> str:
+    configured = os.environ.get("CODEX_USAGE_WIDGET_LANG", "").strip().lower()
+    if configured:
+        return "zh" if configured.startswith("zh") else "en"
+    if sys.platform == "win32":
+        with contextlib.suppress(Exception):
+            buffer = ctypes.create_unicode_buffer(85)
+            if ctypes.windll.kernel32.GetUserDefaultLocaleName(buffer, len(buffer)):
+                return "zh" if buffer.value.lower().startswith("zh") else "en"
+    candidates = [
+        locale.getlocale()[0],
+        os.environ.get("LANG"),
+        os.environ.get("LANGUAGE"),
+    ]
+    for value in candidates:
+        if value and str(value).lower().startswith("zh"):
+            return "zh"
+    return "en"
+
+
+CURRENT_LANGUAGE = system_language()
+
+
+def tr(key: str, **kwargs: Any) -> str:
+    text = TRANSLATIONS.get(CURRENT_LANGUAGE, TRANSLATIONS["en"]).get(key, TRANSLATIONS["en"].get(key, key))
+    return text.format(**kwargs) if kwargs else text
 
 
 def ensure_data_dir() -> None:
@@ -186,51 +332,53 @@ def parse_event_timestamp(value: Any) -> float | None:
 def format_local_time(timestamp: Any, include_date: bool = False) -> str:
     ts = clean_float(timestamp)
     if ts is None or ts <= 0:
-        return "未知"
+        return tr("unknown")
     if ts > 10_000_000_000:
         ts /= 1000
     try:
         value = dt.datetime.fromtimestamp(ts).astimezone()
     except Exception:
-        return "未知"
-    return value.strftime("%m月%d日 %H:%M") if include_date else value.strftime("%H:%M")
+        return tr("unknown")
+    if include_date:
+        return value.strftime("%m月%d日 %H:%M") if CURRENT_LANGUAGE == "zh" else value.strftime("%b %d %H:%M")
+    return value.strftime("%H:%M")
 
 
 def format_relative(timestamp: Any, now: float | None = None) -> str:
     ts = clean_float(timestamp)
     if ts is None or ts <= 0:
-        return "未知"
+        return tr("unknown")
     if ts > 10_000_000_000:
         ts /= 1000
     now = now_ts() if now is None else now
     delta = ts - now
     if delta <= 0:
-        return "已到重置时间"
+        return tr("reset_reached")
     minutes = int(round(delta / 60))
     if minutes < 60:
-        return f"{max(1, minutes)} 分钟后"
+        return f"{max(1, minutes)}{tr('minute_after')}"
     hours, mins = divmod(minutes, 60)
     if hours < 36:
-        return f"{hours} 小时 {mins} 分后" if mins else f"{hours} 小时后"
+        return tr("hour_min_after", hours=hours, mins=mins) if mins else f"{hours}{tr('hour_after')}"
     days, hours = divmod(hours, 24)
-    return f"{days} 天 {hours} 小时后" if hours else f"{days} 天后"
+    return tr("day_hour_after", days=days, hours=hours) if hours else tr("day_after", days=days)
 
 
 def format_age(timestamp: Any, now: float | None = None) -> str:
     ts = clean_float(timestamp)
     if ts is None or ts <= 0:
-        return "未知时间"
+        return tr("unknown_time")
     if ts > 10_000_000_000:
         ts /= 1000
     now = now_ts() if now is None else now
     age = max(0, int(now - ts))
     if age < 75:
-        return "刚刚"
+        return tr("just_now")
     if age < 3600:
-        return f"{age // 60} 分钟前"
+        return tr("minute_ago", value=age // 60)
     if age < 36 * 3600:
-        return f"{age // 3600} 小时前"
-    return f"{age // 86400} 天前"
+        return tr("hour_ago", value=age // 3600)
+    return tr("day_ago", value=age // 86400)
 
 
 def empty_window() -> dict[str, Any]:
@@ -248,7 +396,7 @@ def empty_window() -> dict[str, Any]:
 def empty_sample(config: dict[str, Any] | None = None) -> dict[str, Any]:
     config = {} if config is None else config
     return {
-        "app": APP_NAME,
+        "app": tr("app_name"),
         "version": APP_VERSION,
         "ok": False,
         "source_state": "unavailable",
@@ -260,8 +408,8 @@ def empty_sample(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "limit_id": None,
         "rate_limit_reached_type": None,
         "windows": {
-            "five_hour": empty_window() | {"label": WINDOW_LABELS["five_hour"]},
-            "weekly": empty_window() | {"label": WINDOW_LABELS["weekly"]},
+            "five_hour": empty_window() | {"label": tr("window_5h")},
+            "weekly": empty_window() | {"label": tr("window_7d")},
         },
         "errors": [],
         "note": "",
@@ -363,31 +511,31 @@ def candidate_windows(raw: dict[str, Any]) -> list[dict[str, Any]]:
 
 def normalize_rate_limits(raw: dict[str, Any], now: float | None = None) -> dict[str, dict[str, Any]]:
     windows = {
-        "five_hour": empty_window() | {"label": WINDOW_LABELS["five_hour"]},
-        "weekly": empty_window() | {"label": WINDOW_LABELS["weekly"]},
+        "five_hour": empty_window() | {"label": tr("window_5h")},
+        "weekly": empty_window() | {"label": tr("window_7d")},
     }
     for item in candidate_windows(raw):
         minutes = window_minutes_from(item)
         if minutes == FIVE_HOUR_MINUTES:
-            normalized = normalize_window(item, WINDOW_LABELS["five_hour"], now=now)
+            normalized = normalize_window(item, tr("window_5h"), now=now)
             if normalized:
                 windows["five_hour"] = normalized
         elif minutes == WEEKLY_MINUTES:
-            normalized = normalize_window(item, WINDOW_LABELS["weekly"], now=now)
+            normalized = normalize_window(item, tr("window_7d"), now=now)
             if normalized:
                 windows["weekly"] = normalized
 
     if not windows["five_hour"]["available"]:
         primary = raw.get("primary") or raw.get("primary_window")
         if isinstance(primary, dict):
-            normalized = normalize_window(primary, WINDOW_LABELS["five_hour"], now=now)
+            normalized = normalize_window(primary, tr("window_5h"), now=now)
             if normalized:
                 normalized["window_minutes"] = normalized["window_minutes"] or FIVE_HOUR_MINUTES
                 windows["five_hour"] = normalized
     if not windows["weekly"]["available"]:
         secondary = raw.get("secondary") or raw.get("secondary_window")
         if isinstance(secondary, dict):
-            normalized = normalize_window(secondary, WINDOW_LABELS["weekly"], now=now)
+            normalized = normalize_window(secondary, tr("window_7d"), now=now)
             if normalized:
                 normalized["window_minutes"] = normalized["window_minutes"] or WEEKLY_MINUTES
                 windows["weekly"] = normalized
@@ -410,8 +558,8 @@ class CodexRateLimitReader:
         sample = empty_sample(self.config)
         latest = self._find_latest_rate_limits()
         if latest is None:
-            sample["errors"].append("没有找到新的额度快照")
-            sample["note"] = "Codex 写入新记录后会自动刷新"
+            sample["errors"].append(tr("note_no_snapshot"))
+            sample["note"] = tr("note_new_record")
             return sample
 
         raw = latest["rate_limits"]
@@ -426,12 +574,12 @@ class CodexRateLimitReader:
         sample["rate_limit_reached_type"] = raw.get("rate_limit_reached_type")
         stale_count = sum(1 for item in windows.values() if item.get("available") and item.get("stale"))
         if not sample["ok"]:
-            sample["errors"].append("读到了额度记录，但没有识别出 5 小时或 1 周窗口")
-            sample["note"] = "Codex 记录格式可能更新了"
+            sample["errors"].append(tr("note_unrecognized"))
+            sample["note"] = tr("note_format_changed")
         elif stale_count:
-            sample["note"] = "额度窗口已经到过重置点，继续一次 Codex 后会更新"
+            sample["note"] = tr("note_stale")
         else:
-            sample["note"] = "来自 Codex 本地额度记录"
+            sample["note"] = tr("note_local")
         return sample
 
     def _find_latest_rate_limits(self) -> dict[str, Any] | None:
@@ -567,7 +715,7 @@ def read_snapshot(
             cached["source_state"] = "cache"
             cached["snapshot_at"] = now_ts()
             cached["errors"] = sample.get("errors", [])
-            cached["note"] = "暂时没读到新快照，显示上次成功数据"
+            cached["note"] = tr("note_cache_no_new")
             return cached
         return sample
     except Exception as exc:
@@ -577,12 +725,12 @@ def read_snapshot(
             cached = dict(cached)
             cached["source_state"] = "cache"
             cached["snapshot_at"] = now_ts()
-            cached["errors"] = [f"当前读取失败，显示上次成功数据：{exc}"]
-            cached["note"] = "显示缓存数据"
+            cached["errors"] = [tr("note_cache_fallback", error=exc)]
+            cached["note"] = tr("note_cache")
             return cached
         sample = empty_sample(config)
         sample["errors"].append(str(exc))
-        sample["note"] = "暂时读取失败"
+        sample["note"] = tr("note_failed")
         return sample
 
 
@@ -829,10 +977,10 @@ class CardRenderer:
         self._draw_codex_mark(image, draw, 38, 38)
 
         draw.text(self.xy(68, 19), "Codex Limit", font=self._font(18, True), fill=ink)
-        draw.text(self.xy(69, 45), "quota at a glance", font=self._font(10, True), fill=muted)
+        draw.text(self.xy(69, 45), tr("subtitle"), font=self._font(10, True), fill=muted)
         pill_text = self._status_text(sample)
         status_color = self._status_color(sample)
-        pill_width = 116 if pill_text == "无新快照" else 86
+        pill_width = min(132, max(78, int(text_width(draw, pill_text, self._font(10, True)) / self.SCALE) + 42))
         pill_x2 = 286
         pill_x1 = pill_x2 - pill_width
         draw.rounded_rectangle(self.xy(pill_x1, 70, pill_x2, 98), radius=self.sc(12), fill="#18263A")
@@ -846,25 +994,25 @@ class CardRenderer:
 
     def _status_text(self, sample: dict[str, Any]) -> str:
         if sample.get("refreshing"):
-            return "刷新中"
+            return tr("status_refreshing")
         if sample.get("refresh_result") == "unchanged":
-            return "无新快照"
+            return tr("status_unchanged")
         if sample.get("source_state") == "cache":
-            return "缓存"
+            return tr("status_cache")
         if not sample.get("ok"):
-            return "等待数据"
+            return tr("status_waiting")
         windows = sample.get("windows") or {}
         if any(isinstance(item, dict) and item.get("stale") for item in windows.values()):
-            return "待刷新"
-        return "实时"
+            return tr("status_stale")
+        return tr("status_live")
 
     def _status_color(self, sample: dict[str, Any]) -> str:
         text = self._status_text(sample)
-        if text == "刷新中":
+        if text == tr("status_refreshing"):
             return "#2563EB"
-        if text == "实时":
+        if text == tr("status_live"):
             return "#34C759"
-        if text in ("缓存", "待刷新", "无新快照"):
+        if text in (tr("status_cache"), tr("status_stale"), tr("status_unchanged")):
             return "#FF9500"
         return "#FF3B30"
 
@@ -923,7 +1071,7 @@ class CardRenderer:
 
     def _remaining_label(self, window: dict[str, Any], stale: bool) -> str:
         if stale:
-            return "WAIT"
+            return tr("waiting").upper() if CURRENT_LANGUAGE == "en" else tr("waiting")
         if not window.get("available"):
             return "--%"
         return percent_text(window.get("remaining_percent"))
@@ -938,9 +1086,11 @@ class CardRenderer:
         draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(24), fill="#111C2B")
 
         draw.text(self.xy(x1 + 22, y1 + 22), "5H", font=self._font(20, True), fill="#F8FAFC")
-        draw.text(self.xy(x1 + 71, y1 + 30), "5 小时窗口", font=self._font(13, True), fill="#94A3B8")
+        label_font = self._font(13, True)
+        label = fit_text(draw, tr("window_5h"), label_font, self.sc(108))
+        draw.text(self.xy(x1 + 71, y1 + 30), label, font=label_font, fill="#94A3B8")
 
-        used_text = f"已用 {percent_text(window.get('used_percent'))}" if available else "等待"
+        used_text = f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else tr("waiting")
         draw.rounded_rectangle(self.xy(x2 - 102, y1 + 21, x2 - 18, y1 + 49), radius=self.sc(11), fill="#2A1F19")
         draw.text(self.xy(x2 - 60, y1 + 35), used_text, font=self._font(10, True), fill="#FDBA74", anchor="mm")
 
@@ -948,8 +1098,8 @@ class CardRenderer:
         main_font = self._font(72 if not stale else 40, True)
         draw.text(self.xy(x1 + 22, y1 + 70), main, font=main_font, fill=color)
 
-        reset = self._compact_relative(window.get("reset_at")) if available else "等待快照"
-        reset = "旧快照" if stale else f"{reset}重置"
+        reset = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
+        reset = tr("old_snapshot") if stale else f"{reset}{tr('reset')}"
         draw.text(self.xy(x1 + 24, y1 + 58), reset, font=self._font(13, True), fill="#CBD5E1")
 
         self._draw_progress(draw, x1 + 22, y2 - 34, x2 - 22, y2 - 18, ratio, color, available and not stale)
@@ -962,7 +1112,10 @@ class CardRenderer:
         draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(22), fill="#101A29")
 
         draw.text(self.xy(x1 + 22, y1 + 22), "7D", font=self._font(18, True), fill="#F8FAFC")
-        used_text = f"用 {percent_text(window.get('used_percent'))}" if available else "--"
+        week_label_font = self._font(12, True)
+        week_label = fit_text(draw, tr("window_7d"), week_label_font, self.sc(112))
+        draw.text(self.xy(x1 + 66, y1 + 27), week_label, font=week_label_font, fill="#94A3B8")
+        used_text = f"{tr('used_short')} {percent_text(window.get('used_percent'))}" if available else "--"
         draw.rounded_rectangle(self.xy(x2 - 82, y1 + 19, x2 - 18, y1 + 47), radius=self.sc(11), fill="#2A1F19")
         draw.text(self.xy(x2 - 50, y1 + 33), used_text, font=self._font(10, True), fill="#FDBA74", anchor="mm")
 
@@ -970,8 +1123,8 @@ class CardRenderer:
         main_font = self._font(40 if not stale else 26, True)
         draw.text(self.xy(x1 + 22, y1 + 62), main, font=main_font, fill=color)
 
-        reset = self._compact_relative(window.get("reset_at")) if available else "等待快照"
-        reset = "旧快照" if stale else f"{reset}重置"
+        reset = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
+        reset = tr("old_snapshot") if stale else f"{reset}{tr('reset')}"
         reset = fit_text(draw, reset, self._font(12, True), self.sc(128))
         draw.text(self.xy(x1 + 136, y1 + 78), reset, font=self._font(12, True), fill="#94A3B8")
 
@@ -1020,23 +1173,23 @@ class CardRenderer:
 
         label_font = self._font(17 if primary else 15, True)
         small_font = self._font(13 if primary else 12)
-        draw.text(self.xy(x1 + 22, y1 + 20), WINDOW_LABELS[key], font=label_font, fill="#0F172A")
+        draw.text(self.xy(x1 + 22, y1 + 20), tr("window_5h" if key == "five_hour" else "window_7d"), font=label_font, fill="#0F172A")
 
-        used_text = f"已用 {percent_text(used)}" if available else "等待数据"
+        used_text = f"{tr('used')} {percent_text(used)}" if available else tr("status_waiting")
         used_w = text_width(draw, used_text, self._font(11, True)) / self.SCALE + 24
         draw.rounded_rectangle(self.xy(x2 - used_w - 20, y1 + 18, x2 - 20, y1 + 43), radius=self.sc(12), fill=self._soft_color(accent))
         draw.text(self.xy(x2 - used_w - 8, y1 + 24), used_text, font=self._font(11, True), fill="#334155")
 
         if stale:
-            main = "待更新"
+            main = tr("status_stale")
             main_font = self._font(30 if primary else 22, True)
-            reset_line = f"旧值 {percent_text(remaining)}"
-            helper_line = "等待 Codex 新快照"
+            reset_line = f"{tr('old_snapshot')} {percent_text(remaining)}"
+            helper_line = tr("waiting_snapshot")
         else:
             main = percent_text(remaining) if available else "--%"
             main_font = self._font(58 if primary else 42, True)
-            reset_line = f"{self._compact_relative(window.get('reset_at'))}重置" if available else "等待快照"
-            helper_line = "剩余"
+            reset_line = f"{self._compact_relative(window.get('reset_at'))}{tr('reset')}" if available else tr("waiting_snapshot")
+            helper_line = ""
 
         reset_line = fit_text(draw, reset_line, small_font, self.sc((x2 - x1) - 44))
         draw.text(self.xy(x1 + 24, y1 + 51), reset_line, font=small_font, fill="#64748B")
@@ -1058,7 +1211,7 @@ class CardRenderer:
 
     def _compact_relative(self, timestamp: Any) -> str:
         text = format_relative(timestamp)
-        return text.replace(" ", "")
+        return text.replace(" ", "") if CURRENT_LANGUAGE == "zh" else text
 
     def _soft_color(self, color: str) -> str:
         if color == "#34C759":
@@ -1070,16 +1223,16 @@ class CardRenderer:
     def _draw_footer(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         source_event = sample.get("source_event_at")
         if sample.get("refreshing"):
-            footer = "正在刷新"
+            footer = tr("footer_refreshing")
         elif sample.get("refresh_result") == "unchanged":
-            footer = f"无新快照 · {format_age(source_event)}"
+            footer = tr("footer_unchanged", age=format_age(source_event))
         elif sample.get("ok"):
-            footer = f"更新 {format_age(source_event)}"
+            footer = tr("footer_updated", age=format_age(source_event))
         else:
             errors = sample.get("errors") or []
-            footer = errors[0] if errors else (sample.get("note") or "等待 Codex 额度数据")
+            footer = errors[0] if errors else (sample.get("note") or tr("footer_waiting"))
         if sample.get("source_state") == "cache":
-            footer = f"缓存 · {format_age(source_event)}"
+            footer = tr("footer_cache", age=format_age(source_event))
         footer = fit_text(draw, footer, self._font(12), self.sc(178))
         draw.text(self.xy(22, 496), footer, font=self._font(12, True), fill="#94A3B8")
 
@@ -1116,14 +1269,14 @@ class UsageWidget:
         self._make_menu()
         self._place_initial()
         self._apply_window_shape()
-        self._set_image(empty_sample(self.config) | {"note": "正在读取 Codex 额度"})
+        self._set_image(empty_sample(self.config) | {"note": tr("pending_read")})
         self.refresh()
         self._poll_queue()
         self._schedule_refresh()
         self._ensure_visible_loop()
 
     def _build_window(self) -> None:
-        self.root.title(APP_NAME)
+        self.root.title(tr("app_name"))
         self.root.overrideredirect(True)
         self.root.resizable(False, False)
         self.root.configure(bg=self.KEY)
@@ -1146,11 +1299,11 @@ class UsageWidget:
 
     def _make_menu(self) -> None:
         self.menu = tk.Menu(self.root, tearoff=False)
-        self.menu.add_command(label="立即刷新", command=lambda: self.refresh(force=True))
-        self.menu.add_command(label="置顶 / 取消置顶", command=self.toggle_topmost)
-        self.menu.add_command(label="回到右上角", command=self.reset_position)
+        self.menu.add_command(label=tr("menu_refresh"), command=lambda: self.refresh(force=True))
+        self.menu.add_command(label=tr("menu_topmost"), command=self.toggle_topmost)
+        self.menu.add_command(label=tr("menu_reset"), command=self.reset_position)
         self.menu.add_separator()
-        self.menu.add_command(label="退出", command=self.quit)
+        self.menu.add_command(label=tr("menu_quit"), command=self.quit)
 
     def _place_initial(self) -> None:
         sw = self.root.winfo_screenwidth()
@@ -1235,7 +1388,7 @@ class UsageWidget:
             pending = dict(self.current_sample)
             pending["refreshing"] = True
             pending["refresh_result"] = None
-            pending["note"] = "正在查找最新额度快照"
+            pending["note"] = tr("pending_refresh")
             self._set_image(pending)
 
         def worker() -> None:
@@ -1248,7 +1401,7 @@ class UsageWidget:
                 sample["manual_refresh"] = True
                 sample["refresh_result"] = "updated" if self._source_marker(sample) != previous_marker else "unchanged"
                 if sample["refresh_result"] == "unchanged":
-                    sample["note"] = "刷新完成，但没有新的额度快照"
+                    sample["note"] = tr("manual_unchanged")
             self.queue.put(sample)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1322,10 +1475,10 @@ def set_window_icon(root: tk.Tk) -> None:
 
 def run_app() -> int:
     if tk is None:
-        print("无法启动窗口组件：tkinter 不可用。")
+        print(tr("tk_missing"))
         return 2
     if Image is None or ImageTk is None:
-        print("无法启动窗口组件：Pillow 不可用。")
+        print(tr("pillow_missing"))
         return 2
     set_dpi_awareness()
     config = load_config()
@@ -1342,7 +1495,7 @@ def run_app() -> int:
         log_line("UI crashed:\n" + traceback.format_exc())
         if messagebox:
             with contextlib.suppress(Exception):
-                messagebox.showerror(APP_NAME, f"小组件启动失败，日志在：\n{LOG_PATH}")
+                messagebox.showerror(tr("app_name"), tr("ui_crashed", path=LOG_PATH))
         return 1
 
 
@@ -1520,6 +1673,26 @@ class ReaderTests(unittest.TestCase):
         pixels = image.get_flattened_data() if hasattr(image, "get_flattened_data") else image.getdata()
         self.assertGreater(len(set(pixels)), 50)
 
+    def test_renderer_supports_english_and_chinese(self) -> None:
+        if Image is None:
+            self.skipTest("Pillow unavailable")
+        global CURRENT_LANGUAGE
+        previous = CURRENT_LANGUAGE
+        try:
+            for language in ("en", "zh"):
+                CURRENT_LANGUAGE = language
+                sample = empty_sample()
+                sample["ok"] = True
+                sample["source_state"] = "live"
+                sample["source_event_at"] = now_ts()
+                sample["plan_type"] = "plus"
+                sample["windows"] = normalize_rate_limits(example_rate_limits())
+                image = CardRenderer().render(sample, hover=True)
+                self.assertEqual(image.size, (CardRenderer.WIDTH, CardRenderer.HEIGHT))
+                self.assertIn(tr("status_live"), TRANSLATIONS[language].values())
+        finally:
+            CURRENT_LANGUAGE = previous
+
 
 def run_tests(include_ui: bool = False) -> int:
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(ReaderTests)
@@ -1555,11 +1728,11 @@ def print_snapshot() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=APP_NAME)
-    parser.add_argument("--test", action="store_true", help="运行自测")
-    parser.add_argument("--include-ui", action="store_true", help="自测时包含窗口烟雾测试")
-    parser.add_argument("--snapshot", action="store_true", help="打印当前读取到的额度快照")
-    parser.add_argument("--make-icon", action="store_true", help="重新生成高分辨率图标")
+    parser = argparse.ArgumentParser(description=tr("app_name"))
+    parser.add_argument("--test", action="store_true", help=tr("arg_test"))
+    parser.add_argument("--include-ui", action="store_true", help=tr("arg_include_ui"))
+    parser.add_argument("--snapshot", action="store_true", help=tr("arg_snapshot"))
+    parser.add_argument("--make-icon", action="store_true", help=tr("arg_make_icon"))
     args = parser.parse_args(argv)
     if args.test:
         return run_tests(include_ui=args.include_ui)
