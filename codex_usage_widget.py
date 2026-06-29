@@ -987,10 +987,8 @@ class CardRenderer:
         draw.ellipse(self.xy(pill_x1 + 13, 80, pill_x1 + 22, 89), fill=status_color)
         draw.text(self.xy(pill_x1 + 32, 76), pill_text, font=self._font(10, True), fill="#E2E8F0")
 
-        draw.rounded_rectangle(self.xy(205, 19, 245, 55), radius=self.sc(12), fill="#1B2A3E")
-        self._draw_refresh_icon(draw, 225, 37, "#C7D2FE")
-        draw.rounded_rectangle(self.xy(252, 19, 292, 55), radius=self.sc(12), fill="#142033")
-        self._draw_close_icon(draw, 272, 37, "#CBD5E1")
+        self._draw_refresh_control(draw, 225, 37)
+        self._draw_close_control(draw, 272, 37)
 
     def _status_text(self, sample: dict[str, Any]) -> str:
         if sample.get("refreshing"):
@@ -1015,13 +1013,30 @@ class CardRenderer:
         return "#FF3B30"
 
     def _draw_refresh_icon(self, draw: ImageDraw.ImageDraw, cx: int, cy: int, color: str) -> None:
-        box = self.xy(cx - 8, cy - 8, cx + 8, cy + 8)
-        draw.arc(box, start=25, end=320, fill=color, width=self.sc(2))
-        draw.polygon([self.xy(cx + 7, cy - 8), self.xy(cx + 14, cy - 8), self.xy(cx + 10, cy - 2)], fill=color)
+        box = self.xy(cx - 7, cy - 7, cx + 7, cy + 7)
+        draw.arc(box, start=34, end=316, fill=color, width=self.sc(1.6))
+        draw.line([self.xy(cx + 7, cy - 7), self.xy(cx + 12, cy - 7)], fill=color, width=self.sc(1.6))
+        draw.line([self.xy(cx + 7, cy - 7), self.xy(cx + 7, cy - 2)], fill=color, width=self.sc(1.6))
 
     def _draw_close_icon(self, draw: ImageDraw.ImageDraw, cx: int, cy: int, color: str) -> None:
-        draw.line([self.xy(cx - 5, cy - 5), self.xy(cx + 5, cy + 5)], fill=color, width=self.sc(2))
-        draw.line([self.xy(cx + 5, cy - 5), self.xy(cx - 5, cy + 5)], fill=color, width=self.sc(2))
+        draw.line([self.xy(cx - 4, cy - 4), self.xy(cx + 4, cy + 4)], fill=color, width=self.sc(1.6))
+        draw.line([self.xy(cx + 4, cy - 4), self.xy(cx - 4, cy + 4)], fill=color, width=self.sc(1.6))
+
+    def _draw_refresh_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+        fill = "#172234" if sys.platform != "darwin" else "#182334"
+        outline = "#26354A" if sys.platform != "darwin" else "#2C3A4E"
+        draw.ellipse(self.xy(cx - 18, cy - 18, cx + 18, cy + 18), fill=fill, outline=outline, width=self.sc(1))
+        self._draw_refresh_icon(draw, cx, cy, "#D8E2F2")
+
+    def _draw_close_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+        if sys.platform == "darwin":
+            draw.ellipse(self.xy(cx - 10, cy - 10, cx + 10, cy + 10), fill="#FF5F57")
+            draw.ellipse(self.xy(cx - 10, cy - 10, cx + 10, cy + 10), outline="#D64D47", width=self.sc(1))
+            draw.line([self.xy(cx - 3, cy - 3), self.xy(cx + 3, cy + 3)], fill="#7A1F1A", width=self.sc(1.15))
+            draw.line([self.xy(cx + 3, cy - 3), self.xy(cx - 3, cy + 3)], fill="#7A1F1A", width=self.sc(1.15))
+            return
+        draw.ellipse(self.xy(cx - 18, cy - 18, cx + 18, cy + 18), fill="#131E2F", outline="#26354A", width=self.sc(1))
+        self._draw_close_icon(draw, cx, cy, "#D7DFEA")
 
     def _draw_codex_mark(self, image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
         if self.codex_mark is not None:
