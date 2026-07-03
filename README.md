@@ -1,28 +1,54 @@
 # Codex Usage Widget
 
-An unofficial desktop widget for checking your local Codex usage limits at a glance.
+<p align="center">
+  <img src="docs/screenshot.png" alt="Codex Usage Widget live quota screenshot" width="230">
+  <img src="docs/hover-screenshot.png" alt="Codex Usage Widget hover glass screenshot" width="230">
+  <img src="docs/waiting-screenshot.png" alt="Codex Usage Widget waiting for new Codex record screenshot" width="230">
+</p>
 
-It shows the two limit windows people care about most:
+<p align="center">
+  <strong>A polished desktop widget for checking your local Codex usage limits at a glance.</strong>
+</p>
 
-- `5H`: short-window remaining quota
-- `7D`: weekly remaining quota
+<p align="center">
+  <a href="#windows-quick-start">Windows</a>
+  |
+  <a href="#macos-quick-start">macOS</a>
+  |
+  <a href="#privacy">Local only</a>
+  |
+  <a href="#run-tests">Tested</a>
+</p>
 
-The interface is designed as a compact Windows desktop widget with a dark acrylic/glass look, rounded corners, high-DPI rendering, hover translucency, and color-coded usage bars.
+Codex Usage Widget is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
 
-![Codex Usage Widget screenshot](docs/screenshot.png)
+It sits quietly on the desktop, shows the two limits that matter most, and makes the important numbers large enough to read at a glance:
 
-## Highlights
+- `5H`: the short-window Codex quota
+- `7D`: the weekly Codex quota
 
+The interface is intentionally compact and premium-feeling: dark acrylic glass, high-DPI rendering, rounded geometry, Codex branding, color-coded quota bars, hover translucency, and a layout that stays useful even when one window has reset and is waiting for a fresh Codex record.
+
+## Why It Feels Good
+
+- Beautiful vertical desktop widget that can live near the edge of your screen
 - Real local Codex limit snapshots, not mocked counters
-- 5-hour and 7-day quota windows
-- Green remaining segment and orange used segment
-- Hover glass mode: move the mouse over the widget to make it translucent enough to see content underneath
-- System language detection with Simplified Chinese and English UI text
+- Big remaining-percentage typography for quick scanning
+- Green remaining segment and orange used segment for instant visual understanding
+- Hover glass mode, so you can inspect content underneath without fully hiding quota data
 - Manual refresh, auto refresh, always-on-top mode, and drag-to-position
 - Cache fallback when Codex has not written a fresh snapshot yet
+- Clear reset/waiting state instead of disappearing or showing misleading values
+- System language detection with Simplified Chinese and English UI text
 - Windows startup install/uninstall scripts
 - macOS launcher included for sharing with teammates
 - Built-in tests for parsing, caching, stale windows, and UI rendering
+
+## More Screenshots
+
+| Live quota | Hover glass | Reset-safe state | English UI |
+| --- | --- | --- | --- |
+| <img src="docs/screenshot.png" alt="Live quota view" width="180"> | <img src="docs/hover-screenshot.png" alt="Hover glass view" width="180"> | <img src="docs/waiting-screenshot.png" alt="Waiting for new Codex record view" width="180"> | <img src="docs/english-screenshot.png" alt="English UI view" width="180"> |
 
 ## Privacy
 
@@ -85,7 +111,7 @@ Cache locations:
 
 ## Design Notes
 
-The UI is intentionally narrow and vertical so it can live near the edge of the screen. It uses a restrained dark glass surface, large remaining-percentage typography, and a split quota bar:
+The UI is intentionally narrow and vertical so it can stay visible without stealing the desktop. It uses a restrained dark glass surface, a high-contrast quota hierarchy, and a split quota bar:
 
 - Left side: remaining quota
 - Right side: used quota
