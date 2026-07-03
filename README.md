@@ -18,6 +18,14 @@
   <a href="#privacy">Local only</a>
   |
   <a href="#run-tests">Tested</a>
+  |
+  <a href="docs/PROMOTION.md">Share Kit</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Lijing94-hub/codex-usage-widget/stargazers">
+    <img src="https://img.shields.io/github/stars/Lijing94-hub/codex-usage-widget?style=social" alt="GitHub stars">
+  </a>
 </p>
 
 Codex Usage Widget is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
@@ -28,6 +36,8 @@ It sits quietly on the desktop, shows the two limits that matter most, and makes
 - `7D`: the weekly Codex quota
 
 The interface is intentionally compact and premium-feeling: dark acrylic glass, high-DPI rendering, rounded geometry, Codex branding, color-coded quota bars, hover translucency, and a layout that stays useful even when one window has reset and is waiting for a fresh Codex record.
+
+If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
 
 ## Why It Feels Good
 
