@@ -85,7 +85,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "used": "Used",
         "waiting": "Waiting",
         "waiting_snapshot": "Waiting snapshot",
-        "stale_snapshot": "Waiting snapshot",
+        "reset_done": "Reset",
+        "stale_snapshot": "Waiting for new Codex record",
         "reset": " reset",
         "unknown": "Unknown",
         "unknown_time": "Unknown time",
@@ -143,7 +144,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "used": "已用",
         "waiting": "等待",
         "waiting_snapshot": "等待快照",
-        "stale_snapshot": "等待新快照",
+        "reset_done": "已重置",
+        "stale_snapshot": "等待 Codex 新记录",
         "reset": "重置",
         "unknown": "未知",
         "unknown_time": "未知时间",
@@ -1115,7 +1117,7 @@ class CardRenderer:
 
         draw.text(self.xy(x1 + 22, y1 + 22), "5H", font=self._font(20, True), fill="#F8FAFC")
 
-        used_text = tr("waiting") if stale else (f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else tr("waiting"))
+        used_text = tr("reset_done") if stale else (f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else tr("waiting"))
         draw.rounded_rectangle(self.xy(x2 - 102, y1 + 21, x2 - 18, y1 + 49), radius=self.sc(11), fill="#2A1F19")
         draw.text(self.xy(x2 - 60, y1 + 35), used_text, font=self._font(10, True), fill="#FDBA74", anchor="mm")
 
@@ -1137,7 +1139,7 @@ class CardRenderer:
         draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(22), fill="#101A29")
 
         draw.text(self.xy(x1 + 22, y1 + 22), "7D", font=self._font(20, True), fill="#F8FAFC")
-        used_text = tr("waiting") if stale else (f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else "--")
+        used_text = tr("reset_done") if stale else (f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else "--")
         draw.rounded_rectangle(self.xy(x2 - 82, y1 + 19, x2 - 18, y1 + 47), radius=self.sc(11), fill="#2A1F19")
         draw.text(self.xy(x2 - 50, y1 + 33), used_text, font=self._font(10, True), fill="#FDBA74", anchor="mm")
 
