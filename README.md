@@ -74,6 +74,20 @@ It does not upload data, does not call a server, and does not read or display yo
 
 ## Windows Quick Start
 
+Recommended for most users:
+
+1. Download `CodexUsageWidget-Windows.zip` from the latest GitHub Release.
+2. Unzip it.
+3. Double-click `CodexUsageWidget.exe`.
+
+Optional:
+
+- Double-click `install-startup.cmd` from the unzipped folder to launch it automatically when Windows starts.
+- Double-click `uninstall-startup.cmd` to remove startup launch.
+- Windows may warn about unsigned apps. Choose to keep/open it if you trust this repository.
+
+Developer/source mode:
+
 1. Install Python 3.10+ if you do not already have it.
 2. Install Pillow:
 
@@ -83,11 +97,19 @@ It does not upload data, does not call a server, and does not read or display yo
 
 3. Double-click `start.cmd`.
 
-Optional:
+Source-mode optional:
 
 - Double-click `install-startup.cmd` to launch it automatically when Windows starts.
 - Double-click `uninstall-startup.cmd` to remove startup launch.
 - Right-click the widget for refresh, always-on-top, reset position, and quit.
+
+## Build Windows Release
+
+```powershell
+build-windows.cmd
+```
+
+The packaged app will be written to `dist\CodexUsageWidget\CodexUsageWidget.exe`, and the uploadable archive will be written to `dist\CodexUsageWidget-Windows.zip`.
 
 ## macOS Quick Start
 

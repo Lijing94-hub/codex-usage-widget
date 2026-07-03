@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 .Python
 .venv/
+.venv-build/
 venv/
 env/
 
@@ -12,6 +13,7 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+*.spec
 
 CodexUsageWidget/
 limit_sample.json

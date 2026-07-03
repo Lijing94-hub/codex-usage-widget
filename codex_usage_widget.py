@@ -39,8 +39,24 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
 
 APP_NAME = "Codex Usage Widget"
 APP_VERSION = 2
-APP_DIR = pathlib.Path(__file__).resolve().parent
-ASSET_DIR = APP_DIR / "assets"
+
+
+def runtime_app_dir() -> pathlib.Path:
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(sys.executable).resolve().parent
+    return pathlib.Path(__file__).resolve().parent
+
+
+def runtime_resource_dir() -> pathlib.Path:
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled:
+        return pathlib.Path(bundled)
+    return pathlib.Path(__file__).resolve().parent
+
+
+APP_DIR = runtime_app_dir()
+RESOURCE_DIR = runtime_resource_dir()
+ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
 
