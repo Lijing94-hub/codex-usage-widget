@@ -1,6 +1,10 @@
 # Codex Usage Widget
 
 <p align="center">
+  <img src="docs/social-preview.png" alt="Codex 用量桌面小组件" width="760">
+</p>
+
+<p align="center">
   <img src="docs/screenshot.png" alt="Codex Usage Widget live quota screenshot" width="230">
   <img src="docs/hover-screenshot.png" alt="Codex Usage Widget hover glass screenshot" width="230">
   <img src="docs/waiting-screenshot.png" alt="Codex Usage Widget waiting for new Codex record screenshot" width="230">
@@ -44,6 +48,14 @@ The interface is intentionally compact and premium-feeling: dark acrylic glass, 
 If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
 
 如果这个小组件对你有帮助，欢迎点一个 GitHub Star 支持一下。
+
+## Download
+
+Windows users can download the ready-to-run package from the latest release:
+
+[Download CodexUsageWidget-Windows.zip](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexUsageWidget-Windows.zip)
+
+Unzip it, then double-click `CodexUsageWidget.exe`.
 
 ## Why It Feels Good
 

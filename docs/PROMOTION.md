@@ -4,6 +4,10 @@ Repository:
 
 https://github.com/Lijing94-hub/codex-usage-widget
 
+Windows direct download:
+
+https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexUsageWidget-Windows.zip
+
 ## 中文短文案
 
 我做了一个 Codex 桌面用量小组件：Codex Usage Widget。
