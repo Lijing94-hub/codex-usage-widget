@@ -8,6 +8,8 @@
 
 <p align="center">
   <strong>A polished desktop widget for checking your local Codex usage limits at a glance.</strong>
+  <br>
+  <strong>一个用于查看 Codex 5H / 7D 用量的精致桌面小组件。</strong>
 </p>
 
 <p align="center">
@@ -30,6 +32,8 @@
 
 Codex Usage Widget is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
 
+中文用户可以把它当成一个常驻桌面的 Codex 额度看板：不用打开网页，不用翻日志，直接看 5H 和 7D 剩余用量。
+
 It sits quietly on the desktop, shows the two limits that matter most, and makes the important numbers large enough to read at a glance:
 
 - `5H`: the short-window Codex quota
@@ -38,6 +42,8 @@ It sits quietly on the desktop, shows the two limits that matter most, and makes
 The interface is intentionally compact and premium-feeling: dark acrylic glass, high-DPI rendering, rounded geometry, Codex branding, color-coded quota bars, hover translucency, and a layout that stays useful even when one window has reset and is waiting for a fresh Codex record.
 
 If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
+
+如果这个小组件对你有帮助，欢迎点一个 GitHub Star 支持一下。
 
 ## Why It Feels Good
 
