@@ -1490,17 +1490,141 @@ def create_icon(path: pathlib.Path = ICON_PATH) -> pathlib.Path:
         raise RuntimeError("Pillow is unavailable")
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
     sizes = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)]
-    if CODEX_MARK_PATH.exists():
-        source = Image.open(CODEX_MARK_PATH).convert("RGBA")
-        icon = source.resize((256, 256), Image.Resampling.LANCZOS)
-    else:
-        size = 256
-        icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(icon)
-        draw.rounded_rectangle((18, 18, 238, 238), radius=58, fill="#F8FAFF", outline="#E7ECFF", width=3)
-        draw.rounded_rectangle((68, 82, 190, 178), radius=38, fill="#6172FF")
-        font = load_font(78, bold=True)
-        draw.text((128, 130), ">_", font=font, fill="#FFFFFF", anchor="mm")
+
+    size = 1024
+    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+
+    def add_mask(mask: Image.Image, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> None:
+        gradient = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        px = gradient.load()
+        for y in range(size):
+            t = y / (size - 1)
+            color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3)) + (255,)
+            for x in range(size):
+                px[x, y] = color
+        gradient.putalpha(mask)
+        icon.alpha_composite(gradient)
+
+    def rounded_line(
+        layer: Image.Image,
+        points: list[tuple[int, int]],
+        width: int,
+        fill: tuple[int, int, int, int],
+        outline: tuple[int, int, int, int] | None = None,
+        outline_width: int = 0,
+    ) -> None:
+        draw = ImageDraw.Draw(layer)
+        if outline and outline_width:
+            draw.line(points, fill=outline, width=width + outline_width * 2, joint="curve")
+            radius = width // 2 + outline_width
+            for x, y in points:
+                draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=outline)
+        draw.line(points, fill=fill, width=width, joint="curve")
+        radius = width // 2
+        for x, y in points:
+            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill)
+
+    # Soft porcelain app tile. It keeps the tray icon readable on both light and dark taskbars.
+    tile_mask = Image.new("L", (size, size), 0)
+    tile_draw = ImageDraw.Draw(tile_mask)
+    tile_draw.rounded_rectangle((74, 70, 950, 954), radius=236, fill=255)
+    shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    shadow_mask = tile_mask.filter(ImageFilter.GaussianBlur(34))
+    shifted_shadow_mask = Image.new("L", (size, size), 0)
+    shifted_shadow_mask.paste(shadow_mask, (0, 18))
+    shadow_fill = Image.new("RGBA", (size, size), (31, 41, 74, 115))
+    shadow_fill.putalpha(shifted_shadow_mask.point(lambda alpha: min(alpha, 115)))
+    shadow.alpha_composite(shadow_fill)
+    icon.alpha_composite(shadow)
+    add_mask(tile_mask, (255, 255, 255), (221, 232, 255))
+    draw = ImageDraw.Draw(icon)
+    draw.rounded_rectangle((74, 70, 950, 954), radius=236, outline=(255, 255, 255, 190), width=16)
+    draw.ellipse((-120, -150, 620, 560), fill=(149, 161, 255, 38))
+    draw.ellipse((490, 520, 1140, 1140), fill=(54, 109, 255, 35))
+
+    skin_top = (255, 220, 168)
+    skin_bottom = (245, 154, 95)
+    stroke = (78, 54, 69, 255)
+    crease = (148, 88, 68, 150)
+    highlight = (255, 242, 209, 135)
+
+    hand_shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    hand_shadow_draw = ImageDraw.Draw(hand_shadow)
+    hand_shadow_draw.ellipse((248, 182, 896, 916), fill=(55, 47, 79, 95))
+    icon.alpha_composite(hand_shadow.filter(ImageFilter.GaussianBlur(28)))
+
+    fingers = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    for pts, width in [
+        ([(565, 570), (548, 390), (558, 170)], 108),
+        ([(684, 606), (690, 412), (710, 222)], 102),
+        ([(790, 676), (822, 492), (852, 346)], 88),
+    ]:
+        rounded_line(fingers, pts, width, skin_top + (255,), outline=stroke, outline_width=20)
+    icon.alpha_composite(fingers)
+
+    # Palm and wrist are built as one smooth silhouette so the icon reads cleanly when shrunk.
+    palm_mask = Image.new("L", (size, size), 0)
+    palm = ImageDraw.Draw(palm_mask)
+    palm.rounded_rectangle((388, 488, 870, 866), radius=176, fill=255)
+    palm.ellipse((318, 432, 720, 816), fill=255)
+    palm.rounded_rectangle((452, 726, 724, 1000), radius=124, fill=255)
+    palm_outline = palm_mask.filter(ImageFilter.MaxFilter(43))
+    outline_layer = Image.new("RGBA", (size, size), stroke)
+    outline_layer.putalpha(palm_outline)
+    icon.alpha_composite(outline_layer)
+    add_mask(palm_mask, skin_top, skin_bottom)
+
+    # Thumb bridge and curled index form the OK silhouette.
+    bridge = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    rounded_line(bridge, [(254, 542), (394, 650), (610, 640)], 118, skin_top + (255,), outline=stroke, outline_width=20)
+    rounded_line(bridge, [(480, 508), (610, 586), (714, 618)], 86, skin_top + (255,), outline=stroke, outline_width=16)
+    icon.alpha_composite(bridge)
+
+    ring_outer = Image.new("L", (size, size), 0)
+    rd = ImageDraw.Draw(ring_outer)
+    rd.ellipse((112, 136, 626, 650), fill=255)
+    rd.ellipse((250, 276, 514, 540), fill=0)
+    ring_outline = ring_outer.filter(ImageFilter.MaxFilter(35))
+    ring_outline_layer = Image.new("RGBA", (size, size), stroke)
+    ring_outline_layer.putalpha(ring_outline)
+    icon.alpha_composite(ring_outline_layer)
+    add_mask(ring_outer, (255, 224, 178), (244, 150, 91))
+    draw = ImageDraw.Draw(icon)
+    draw.ellipse((250, 276, 514, 540), outline=(86, 59, 72, 235), width=18)
+    draw.arc((176, 202, 552, 578), start=202, end=316, fill=highlight, width=25)
+
+    # Codex roundel inside the O.
+    cx, cy, r = 382, 408, 112
+    codex_mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(codex_mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+    codex = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    cp = codex.load()
+    for y in range(cy - r, cy + r + 1):
+        for x in range(cx - r, cx + r + 1):
+            if 0 <= x < size and 0 <= y < size and codex_mask.getpixel((x, y)):
+                t = (y - (cy - r)) / max(1, 2 * r)
+                cp[x, y] = (
+                    int(153 * (1 - t) + 58 * t),
+                    int(160 * (1 - t) + 91 * t),
+                    255,
+                    255,
+                )
+    icon.alpha_composite(codex)
+    draw = ImageDraw.Draw(icon)
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(255, 255, 255, 230), width=10)
+    draw.line([(cx - 38, cy - 34), (cx - 8, cy), (cx - 38, cy + 34)], fill=(255, 255, 255, 250), width=19, joint="curve")
+    draw.line([(cx + 13, cy + 32), (cx + 55, cy + 32)], fill=(255, 255, 255, 250), width=17)
+
+    # Cartoon creases and glossy highlights.
+    draw.arc((505, 312, 618, 622), start=255, end=312, fill=crease, width=9)
+    draw.arc((622, 402, 744, 666), start=246, end=304, fill=crease, width=8)
+    draw.arc((736, 502, 856, 724), start=245, end=304, fill=crease, width=7)
+    draw.arc((430, 560, 660, 792), start=46, end=122, fill=(255, 244, 219, 110), width=12)
+    draw.line([(554, 188), (548, 284)], fill=(255, 242, 214, 95), width=18)
+    draw.line([(704, 248), (696, 338)], fill=(255, 242, 214, 82), width=15)
+    draw.line([(844, 372), (830, 438)], fill=(255, 242, 214, 78), width=12)
+
+    icon = icon.resize((256, 256), Image.Resampling.LANCZOS)
     icon.save(path, format="ICO", sizes=sizes)
     return path
 
