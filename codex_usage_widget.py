@@ -1524,105 +1524,129 @@ def create_icon(path: pathlib.Path = ICON_PATH) -> pathlib.Path:
         for x, y in points:
             draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill)
 
-    # Soft porcelain app tile. It keeps the tray icon readable on both light and dark taskbars.
+    # Dark nautical tile, kept quiet so the telescope lens and Codex mark stay readable at 16 px.
     tile_mask = Image.new("L", (size, size), 0)
     tile_draw = ImageDraw.Draw(tile_mask)
-    tile_draw.rounded_rectangle((74, 70, 950, 954), radius=236, fill=255)
+    tile_draw.rounded_rectangle((64, 62, 960, 958), radius=220, fill=255)
     shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     shadow_mask = tile_mask.filter(ImageFilter.GaussianBlur(34))
     shifted_shadow_mask = Image.new("L", (size, size), 0)
     shifted_shadow_mask.paste(shadow_mask, (0, 18))
-    shadow_fill = Image.new("RGBA", (size, size), (31, 41, 74, 115))
-    shadow_fill.putalpha(shifted_shadow_mask.point(lambda alpha: min(alpha, 115)))
+    shadow_fill = Image.new("RGBA", (size, size), (0, 0, 0, 130))
+    shadow_fill.putalpha(shifted_shadow_mask.point(lambda alpha: min(alpha, 130)))
     shadow.alpha_composite(shadow_fill)
     icon.alpha_composite(shadow)
-    add_mask(tile_mask, (255, 255, 255), (221, 232, 255))
+    add_mask(tile_mask, (7, 24, 48), (9, 47, 73))
     draw = ImageDraw.Draw(icon)
-    draw.rounded_rectangle((74, 70, 950, 954), radius=236, outline=(255, 255, 255, 190), width=16)
-    draw.ellipse((-120, -150, 620, 560), fill=(149, 161, 255, 38))
-    draw.ellipse((490, 520, 1140, 1140), fill=(54, 109, 255, 35))
+    draw.rounded_rectangle((64, 62, 960, 958), radius=220, outline=(116, 192, 221, 55), width=10)
+    draw.ellipse((-180, 580, 720, 1260), fill=(19, 108, 154, 48))
+    draw.ellipse((460, -180, 1220, 610), fill=(19, 153, 130, 34))
+    for star_x, star_y, star_a in [(202, 196, 140), (858, 256, 115), (780, 788, 95), (160, 690, 90)]:
+        draw.ellipse((star_x - 4, star_y - 4, star_x + 4, star_y + 4), fill=(230, 250, 255, star_a))
 
-    skin_top = (255, 220, 168)
-    skin_bottom = (245, 154, 95)
-    stroke = (78, 54, 69, 255)
-    crease = (148, 88, 68, 150)
-    highlight = (255, 242, 209, 135)
+    brass_dark = (84, 54, 28, 255)
+    brass_mid = (208, 139, 58, 255)
+    brass_light = (255, 210, 116, 255)
 
-    hand_shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    hand_shadow_draw = ImageDraw.Draw(hand_shadow)
-    hand_shadow_draw.ellipse((248, 182, 896, 916), fill=(55, 47, 79, 95))
-    icon.alpha_composite(hand_shadow.filter(ImageFilter.GaussianBlur(28)))
+    telescope_shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    rounded_line(telescope_shadow, [(190, 784), (395, 674), (654, 540)], 214, (0, 0, 0, 120))
+    icon.alpha_composite(telescope_shadow.filter(ImageFilter.GaussianBlur(20)))
 
-    fingers = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    for pts, width in [
-        ([(565, 570), (548, 390), (558, 170)], 108),
-        ([(684, 606), (690, 412), (710, 222)], 102),
-        ([(790, 676), (822, 492), (852, 346)], 88),
-    ]:
-        rounded_line(fingers, pts, width, skin_top + (255,), outline=stroke, outline_width=20)
-    icon.alpha_composite(fingers)
+    tube = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    rounded_line(tube, [(176, 770), (382, 660), (660, 516)], 182, brass_mid, outline=brass_dark, outline_width=24)
+    rounded_line(tube, [(174, 730), (386, 618), (634, 490)], 52, (255, 210, 116, 230), outline=None)
+    rounded_line(tube, [(194, 830), (392, 724), (652, 590)], 42, (124, 73, 35, 170), outline=None)
+    icon.alpha_composite(tube)
 
-    # Palm and wrist are built as one smooth silhouette so the icon reads cleanly when shrunk.
-    palm_mask = Image.new("L", (size, size), 0)
-    palm = ImageDraw.Draw(palm_mask)
-    palm.rounded_rectangle((388, 488, 870, 866), radius=176, fill=255)
-    palm.ellipse((318, 432, 720, 816), fill=255)
-    palm.rounded_rectangle((452, 726, 724, 1000), radius=124, fill=255)
-    palm_outline = palm_mask.filter(ImageFilter.MaxFilter(43))
-    outline_layer = Image.new("RGBA", (size, size), stroke)
-    outline_layer.putalpha(palm_outline)
-    icon.alpha_composite(outline_layer)
-    add_mask(palm_mask, skin_top, skin_bottom)
+    band = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    rounded_line(band, [(258, 734), (350, 686)], 222, (66, 43, 25, 255))
+    rounded_line(band, [(264, 728), (356, 680)], 166, (244, 185, 82, 255))
+    rounded_line(band, [(500, 608), (592, 560)], 226, (66, 43, 25, 255))
+    rounded_line(band, [(506, 602), (598, 554)], 170, (239, 169, 70, 255))
+    icon.alpha_composite(band)
 
-    # Thumb bridge and curled index form the OK silhouette.
-    bridge = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    rounded_line(bridge, [(254, 542), (394, 650), (610, 640)], 118, skin_top + (255,), outline=stroke, outline_width=20)
-    rounded_line(bridge, [(480, 508), (610, 586), (714, 618)], 86, skin_top + (255,), outline=stroke, outline_width=16)
-    icon.alpha_composite(bridge)
+    eyepiece = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    rounded_line(eyepiece, [(98, 812), (230, 742)], 150, (53, 37, 26, 255), outline=(16, 23, 31, 210), outline_width=12)
+    rounded_line(eyepiece, [(106, 800), (238, 730)], 104, (218, 151, 68, 255), outline=None)
+    icon.alpha_composite(eyepiece)
 
-    ring_outer = Image.new("L", (size, size), 0)
-    rd = ImageDraw.Draw(ring_outer)
-    rd.ellipse((112, 136, 626, 650), fill=255)
-    rd.ellipse((250, 276, 514, 540), fill=0)
-    ring_outline = ring_outer.filter(ImageFilter.MaxFilter(35))
-    ring_outline_layer = Image.new("RGBA", (size, size), stroke)
-    ring_outline_layer.putalpha(ring_outline)
-    icon.alpha_composite(ring_outline_layer)
-    add_mask(ring_outer, (255, 224, 178), (244, 150, 91))
+    lens_shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(lens_shadow).ellipse((246, 132, 890, 776), fill=(0, 0, 0, 135))
+    icon.alpha_composite(lens_shadow.filter(ImageFilter.GaussianBlur(24)))
+
+    lens_cx, lens_cy = 568, 436
+    outer_r, glass_r = 334, 258
     draw = ImageDraw.Draw(icon)
-    draw.ellipse((250, 276, 514, 540), outline=(86, 59, 72, 235), width=18)
-    draw.arc((176, 202, 552, 578), start=202, end=316, fill=highlight, width=25)
+    draw.ellipse(
+        (lens_cx - outer_r, lens_cy - outer_r, lens_cx + outer_r, lens_cy + outer_r),
+        fill=brass_dark,
+    )
+    draw.ellipse(
+        (lens_cx - outer_r + 30, lens_cy - outer_r + 30, lens_cx + outer_r - 30, lens_cy + outer_r - 30),
+        fill=brass_mid,
+    )
+    draw.arc(
+        (lens_cx - outer_r + 34, lens_cy - outer_r + 34, lens_cx + outer_r - 34, lens_cy + outer_r - 34),
+        start=196,
+        end=330,
+        fill=brass_light,
+        width=22,
+    )
+    draw.arc(
+        (lens_cx - outer_r + 18, lens_cy - outer_r + 18, lens_cx + outer_r - 18, lens_cy + outer_r - 18),
+        start=28,
+        end=145,
+        fill=(70, 44, 25, 165),
+        width=28,
+    )
 
-    # Codex roundel inside the O.
-    cx, cy, r = 382, 408, 112
-    codex_mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(codex_mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
-    codex = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    cp = codex.load()
-    for y in range(cy - r, cy + r + 1):
-        for x in range(cx - r, cx + r + 1):
-            if 0 <= x < size and 0 <= y < size and codex_mask.getpixel((x, y)):
-                t = (y - (cy - r)) / max(1, 2 * r)
-                cp[x, y] = (
-                    int(153 * (1 - t) + 58 * t),
-                    int(160 * (1 - t) + 91 * t),
-                    255,
-                    255,
-                )
-    icon.alpha_composite(codex)
+    glass_mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(glass_mask).ellipse((lens_cx - glass_r, lens_cy - glass_r, lens_cx + glass_r, lens_cy + glass_r), fill=255)
+    add_mask(glass_mask, (63, 214, 238), (37, 89, 255))
     draw = ImageDraw.Draw(icon)
-    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(255, 255, 255, 230), width=10)
-    draw.line([(cx - 38, cy - 34), (cx - 8, cy), (cx - 38, cy + 34)], fill=(255, 255, 255, 250), width=19, joint="curve")
-    draw.line([(cx + 13, cy + 32), (cx + 55, cy + 32)], fill=(255, 255, 255, 250), width=17)
+    draw.ellipse(
+        (lens_cx - glass_r, lens_cy - glass_r, lens_cx + glass_r, lens_cy + glass_r),
+        outline=(211, 247, 255, 180),
+        width=12,
+    )
+    draw.arc(
+        (lens_cx - glass_r + 42, lens_cy - glass_r + 42, lens_cx + glass_r - 42, lens_cy + glass_r - 42),
+        start=205,
+        end=318,
+        fill=(255, 255, 255, 105),
+        width=18,
+    )
+    draw.ellipse((lens_cx - 180, lens_cy - 198, lens_cx - 72, lens_cy - 92), fill=(255, 255, 255, 80))
 
-    # Cartoon creases and glossy highlights.
-    draw.arc((505, 312, 618, 622), start=255, end=312, fill=crease, width=9)
-    draw.arc((622, 402, 744, 666), start=246, end=304, fill=crease, width=8)
-    draw.arc((736, 502, 856, 724), start=245, end=304, fill=crease, width=7)
-    draw.arc((430, 560, 660, 792), start=46, end=122, fill=(255, 244, 219, 110), width=12)
-    draw.line([(554, 188), (548, 284)], fill=(255, 242, 214, 95), width=18)
-    draw.line([(704, 248), (696, 338)], fill=(255, 242, 214, 82), width=15)
-    draw.line([(844, 372), (830, 438)], fill=(255, 242, 214, 78), width=12)
+    mark_size = 350
+    if CODEX_MARK_PATH.exists():
+        mark = Image.open(CODEX_MARK_PATH).convert("RGBA").resize((mark_size, mark_size), Image.Resampling.LANCZOS)
+    else:
+        mark = Image.new("RGBA", (mark_size, mark_size), (0, 0, 0, 0))
+        md = ImageDraw.Draw(mark)
+        md.rounded_rectangle((24, 24, mark_size - 24, mark_size - 24), radius=78, fill=(250, 252, 255, 255))
+        md.ellipse((72, 70, mark_size - 72, mark_size - 72), fill=(87, 104, 255, 255))
+        font = load_font(104, bold=True)
+        md.text((mark_size // 2, mark_size // 2 + 8), ">_", font=font, fill=(255, 255, 255, 255), anchor="mm")
+    mark_layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mark_layer.alpha_composite(mark, (lens_cx - mark_size // 2, lens_cy - mark_size // 2 + 6))
+    mark_alpha = Image.new("L", (size, size), 0)
+    mark_alpha.paste(mark.getchannel("A"), (lens_cx - mark_size // 2, lens_cy - mark_size // 2 + 6))
+    visible_mark_alpha = Image.composite(mark_alpha, Image.new("L", (size, size), 0), glass_mask)
+    mark_layer.putalpha(visible_mark_alpha)
+    icon.alpha_composite(mark_layer)
+
+    draw = ImageDraw.Draw(icon)
+    draw.arc(
+        (lens_cx - glass_r + 28, lens_cy - glass_r + 28, lens_cx + glass_r - 28, lens_cy + glass_r - 28),
+        start=20,
+        end=136,
+        fill=(255, 255, 255, 115),
+        width=20,
+    )
+    draw.ellipse((lens_cx + 114, lens_cy - 184, lens_cx + 166, lens_cy - 132), fill=(255, 255, 255, 125))
+    draw.line((742, 728, 840, 818), fill=(238, 199, 102, 135), width=12)
+    draw.line((772, 694, 884, 700), fill=(255, 240, 162, 105), width=9)
 
     icon = icon.resize((256, 256), Image.Resampling.LANCZOS)
     icon.save(path, format="ICO", sizes=sizes)
