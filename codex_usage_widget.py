@@ -1489,22 +1489,19 @@ def create_icon(path: pathlib.Path = ICON_PATH) -> pathlib.Path:
     if Image is None or ImageDraw is None:
         raise RuntimeError("Pillow is unavailable")
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
-    size = 256
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow)
-    sdraw.rounded_rectangle((28, 30, 232, 232), radius=52, fill=(0, 0, 0, 55))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(10))
-    img = Image.alpha_composite(img, shadow)
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle((24, 18, 232, 226), radius=54, fill="#EAF4FF", outline="#FFFFFF", width=5)
-    draw.ellipse((-34, -52, 190, 170), fill=(255, 255, 255, 65))
-    draw.ellipse((108, 122, 302, 286), fill=(37, 99, 235, 42))
-    draw.arc((62, 56, 194, 188), start=90, end=390, fill="#2563EB", width=22)
-    draw.arc((83, 77, 173, 167), start=90, end=390, fill="#34C759", width=18)
-    font = load_font(46, bold=True)
-    draw.text((128, 126), "C", font=font, fill="#111827", anchor="mm")
-    img.save(path, format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    sizes = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)]
+    if CODEX_MARK_PATH.exists():
+        source = Image.open(CODEX_MARK_PATH).convert("RGBA")
+        icon = source.resize((256, 256), Image.Resampling.LANCZOS)
+    else:
+        size = 256
+        icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(icon)
+        draw.rounded_rectangle((18, 18, 238, 238), radius=58, fill="#F8FAFF", outline="#E7ECFF", width=3)
+        draw.rounded_rectangle((68, 82, 190, 178), radius=38, fill="#6172FF")
+        font = load_font(78, bold=True)
+        draw.text((128, 130), ">_", font=font, fill="#FFFFFF", anchor="mm")
+    icon.save(path, format="ICO", sizes=sizes)
     return path
 
 
