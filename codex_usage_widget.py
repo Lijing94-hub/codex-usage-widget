@@ -59,7 +59,7 @@ RESOURCE_DIR = runtime_resource_dir()
 ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
-WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v6-cutout.png"
+WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v7-framed-white.png"
 SPYGLASS_BASE_PATH = WIDGET_MARK_PATH
 
 
@@ -78,9 +78,12 @@ LOG_PATH = DATA_DIR / "widget.log"
 
 FIVE_HOUR_MINUTES = 5 * 60
 WEEKLY_MINUTES = 7 * 24 * 60
+DEFAULT_REFRESH_SECONDS = 6
+SESSION_TAIL_BYTES = 768 * 1024
+MAX_SESSION_FILES = 120
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "refresh_seconds": 25,
+    "refresh_seconds": DEFAULT_REFRESH_SECONDS,
     "always_on_top": True,
     "window_x": None,
     "window_y": None,
@@ -98,6 +101,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_waiting": "Waiting",
         "status_stale": "Needs refresh",
         "status_live": "Live",
+        "status_updated": "Synced",
         "window_5h": "5H window",
         "window_7d": "7D window",
         "used": "Used",
@@ -123,6 +127,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "footer_updated": "Updated {age}",
         "footer_cache": "Cached · {age}",
         "footer_waiting": "Waiting for Codex limit data",
+        "footer_usage_changed": "5H used {delta}% · just now",
         "menu_refresh": "Refresh now",
         "menu_topmost": "Always on top / off",
         "menu_reset": "Reset to top right",
@@ -157,6 +162,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_waiting": "等待数据",
         "status_stale": "待刷新",
         "status_live": "实时",
+        "status_updated": "已同步",
         "window_5h": "5 小时窗口",
         "window_7d": "1 周窗口",
         "used": "已用",
@@ -182,6 +188,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "footer_updated": "更新 {age}",
         "footer_cache": "缓存 · {age}",
         "footer_waiting": "等待 Codex 额度数据",
+        "footer_usage_changed": "5H 已用 {delta}% · 刚刚",
         "menu_refresh": "立即刷新",
         "menu_topmost": "置顶 / 取消置顶",
         "menu_reset": "回到右上角",
@@ -303,7 +310,8 @@ def load_config() -> dict[str, Any]:
     user_config = load_json(CONFIG_PATH, {})
     if isinstance(user_config, dict):
         config.update(user_config)
-    config["refresh_seconds"] = clean_int(config.get("refresh_seconds"), 10, 3600) or 25
+    refresh_seconds = clean_int(config.get("refresh_seconds"), 3, 3600) or DEFAULT_REFRESH_SECONDS
+    config["refresh_seconds"] = DEFAULT_REFRESH_SECONDS if refresh_seconds in (20, 25) else refresh_seconds
     config["window_x"] = clean_int(config.get("window_x"))
     config["window_y"] = clean_int(config.get("window_y"))
     config["always_on_top"] = bool(config.get("always_on_top", True))
@@ -601,52 +609,61 @@ class CodexRateLimitReader:
         return sample
 
     def _find_latest_rate_limits(self) -> dict[str, Any] | None:
-        candidates = [
-            item
-            for item in (
-                self._find_latest_rate_limits_in_logs(),
-                self._find_latest_rate_limits_in_sessions(),
-            )
-            if item is not None
-        ]
+        logs_candidate = self._find_latest_rate_limits_in_logs()
+        sessions_candidate = self._find_latest_rate_limits_in_sessions(
+            newer_than=float(logs_candidate.get("timestamp") or 0) if logs_candidate else 0.0
+        )
+        candidates = [item for item in (logs_candidate, sessions_candidate) if item is not None]
         if not candidates:
             return None
         return max(candidates, key=lambda item: float(item.get("timestamp") or 0))
 
-    def _find_latest_rate_limits_in_sessions(self) -> dict[str, Any] | None:
+    def _find_latest_rate_limits_in_sessions(self, newer_than: float = 0.0) -> dict[str, Any] | None:
         sessions = self.codex_home / "sessions"
         if not sessions.exists():
             return None
-        files = sorted(
-            (path for path in sessions.rglob("*.jsonl") if path.is_file()),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
+        files_with_mtime: list[tuple[float, pathlib.Path]] = []
+        for path in sessions.rglob("*.jsonl"):
+            if not path.is_file():
+                continue
+            with contextlib.suppress(OSError):
+                mtime = path.stat().st_mtime
+                if mtime + 1.0 >= newer_than:
+                    files_with_mtime.append((mtime, path))
+        files_with_mtime.sort(reverse=True)
         best: dict[str, Any] | None = None
-        best_ts = -1.0
-        for path in files[:500]:
+        best_ts = newer_than
+        for mtime, path in files_with_mtime[:MAX_SESSION_FILES]:
             try:
-                with path.open("r", encoding="utf-8", errors="replace") as handle:
-                    for line in handle:
-                        if '"rate_limit' not in line:
+                with path.open("rb") as handle:
+                    size = handle.seek(0, os.SEEK_END)
+                    start = max(0, size - SESSION_TAIL_BYTES)
+                    handle.seek(start)
+                    chunk = handle.read()
+                if start:
+                    newline = chunk.find(b"\n")
+                    chunk = chunk[newline + 1:] if newline >= 0 else b""
+                for raw_line in reversed(chunk.splitlines()):
+                    if b'"rate_limit' not in raw_line:
+                        continue
+                    try:
+                        event = json.loads(raw_line.decode("utf-8", errors="replace"))
+                    except Exception:
+                        continue
+                    event_ts = parse_event_timestamp(event.get("timestamp")) or mtime
+                    if event_ts < best_ts:
+                        continue
+                    found_in_line = False
+                    for raw in iter_rate_limit_payloads(event):
+                        windows = normalize_rate_limits(raw)
+                        if not any(item.get("available") for item in windows.values()):
                             continue
-                        try:
-                            event = json.loads(line)
-                        except Exception:
-                            continue
-                        event_ts = parse_event_timestamp(event.get("timestamp")) or path.stat().st_mtime
-                        if event_ts < best_ts:
-                            continue
-                        for raw in iter_rate_limit_payloads(event):
-                            windows = normalize_rate_limits(raw)
-                            if not any(item.get("available") for item in windows.values()):
-                                continue
-                            best_ts = event_ts
-                            best = {
-                                "timestamp": event_ts,
-                                "path": path,
-                                "rate_limits": raw,
-                            }
+                        best_ts = event_ts
+                        best = {"timestamp": event_ts, "path": path, "rate_limits": raw}
+                        found_in_line = True
+                        break
+                    if found_in_line:
+                        break
             except Exception as exc:
                 log_line(f"Failed to inspect {path}: {exc}")
         return best
@@ -674,7 +691,7 @@ class CodexRateLimitReader:
                       and feedback_log_body like '%websocket event:%'
                       and feedback_log_body like '%codex.rate_limits%'
                     order by ts desc, ts_nanos desc
-                    limit 1000
+                    limit 200
                     """
                 ).fetchall()
             finally:
@@ -1011,6 +1028,8 @@ class CardRenderer:
     def _status_text(self, sample: dict[str, Any]) -> str:
         if sample.get("refreshing"):
             return tr("status_refreshing")
+        if sample.get("usage_changed"):
+            return tr("status_updated")
         if sample.get("refresh_result") == "unchanged":
             return tr("status_unchanged")
         if sample.get("source_state") == "cache":
@@ -1024,7 +1043,7 @@ class CardRenderer:
         text = self._status_text(sample)
         if text == tr("status_refreshing"):
             return "#2563EB"
-        if text == tr("status_live"):
+        if text in (tr("status_live"), tr("status_updated")):
             return "#34C759"
         if text in (tr("status_cache"), tr("status_stale"), tr("status_unchanged")):
             return "#FF9500"
@@ -1124,6 +1143,18 @@ class CardRenderer:
             return "--%"
         return percent_text(window.get("remaining_percent"))
 
+    def _used_label(self, window: dict[str, Any], stale: bool, unavailable: str) -> str:
+        if stale:
+            return tr("reset_done")
+        if not window.get("available"):
+            return unavailable
+        text = f"{tr('used')} {percent_text(window.get('used_percent'))}"
+        delta = clean_float(window.get("used_delta"))
+        if delta is not None and abs(delta) >= 0.1:
+            arrow = "↑" if delta > 0 else "↓"
+            text += f" {arrow}{percent_text(abs(delta))}"
+        return text
+
     def _draw_primary_limit(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         window = (sample.get("windows") or {}).get("five_hour") or empty_window()
         color, ratio, available, stale = self._window_style(window)
@@ -1135,9 +1166,11 @@ class CardRenderer:
 
         draw.text(self.xy(x1 + 22, y1 + 22), "5H", font=self._font(20, True), fill="#F8FAFC")
 
-        used_text = tr("reset_done") if stale else (f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else tr("waiting"))
-        draw.rounded_rectangle(self.xy(x2 - 102, y1 + 21, x2 - 18, y1 + 49), radius=self.sc(11), fill="#2A1F19")
-        draw.text(self.xy(x2 - 60, y1 + 35), used_text, font=self._font(10, True), fill="#FDBA74", anchor="mm")
+        used_text = self._used_label(window, stale, tr("waiting"))
+        used_font = self._font(10, True)
+        used_width = min(126, max(84, int(text_width(draw, used_text, used_font) / self.SCALE) + 22))
+        draw.rounded_rectangle(self.xy(x2 - used_width - 18, y1 + 21, x2 - 18, y1 + 49), radius=self.sc(11), fill="#2A1F19")
+        draw.text(self.xy(x2 - used_width / 2 - 18, y1 + 35), used_text, font=used_font, fill="#FDBA74", anchor="mm")
 
         main = self._remaining_label(window, stale)
         main_font = self._font(72 if not stale else 40, True)
@@ -1157,9 +1190,11 @@ class CardRenderer:
         draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(22), fill="#101A29")
 
         draw.text(self.xy(x1 + 22, y1 + 22), "7D", font=self._font(20, True), fill="#F8FAFC")
-        used_text = tr("reset_done") if stale else (f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else "--")
-        draw.rounded_rectangle(self.xy(x2 - 82, y1 + 19, x2 - 18, y1 + 47), radius=self.sc(11), fill="#2A1F19")
-        draw.text(self.xy(x2 - 50, y1 + 33), used_text, font=self._font(10, True), fill="#FDBA74", anchor="mm")
+        used_text = self._used_label(window, stale, "--")
+        used_font = self._font(10, True)
+        used_width = min(118, max(64, int(text_width(draw, used_text, used_font) / self.SCALE) + 20))
+        draw.rounded_rectangle(self.xy(x2 - used_width - 18, y1 + 19, x2 - 18, y1 + 47), radius=self.sc(11), fill="#2A1F19")
+        draw.text(self.xy(x2 - used_width / 2 - 18, y1 + 33), used_text, font=used_font, fill="#FDBA74", anchor="mm")
 
         main = self._remaining_label(window, stale)
         main_font = self._font(40 if not stale else 26, True)
@@ -1268,6 +1303,10 @@ class CardRenderer:
             footer = tr("footer_refreshing")
         elif sample.get("refresh_result") == "unchanged":
             footer = tr("footer_unchanged", age=format_age(source_event))
+        elif sample.get("usage_changed") and sample.get("primary_delta") is not None:
+            delta = float(sample["primary_delta"])
+            delta_text = f"{delta:+.1f}".rstrip("0").rstrip(".")
+            footer = tr("footer_usage_changed", delta=delta_text)
         elif sample.get("ok"):
             footer = tr("footer_updated", age=format_age(source_event))
         else:
@@ -1307,6 +1346,7 @@ class UsageWidget:
         self.drag_moved = False
         self.hovered = False
         self.current_sample: dict[str, Any] | None = None
+        self.last_source_stamp: tuple[tuple[str, int, int], ...] | None = None
         self.photo: ImageTk.PhotoImage | None = None
         self._build_window()
         self._make_menu()
@@ -1315,7 +1355,8 @@ class UsageWidget:
         self._set_image(empty_sample(self.config) | {"note": tr("pending_read")})
         self.refresh()
         self._poll_queue()
-        self._schedule_refresh()
+        self.root.after(int(self.config.get("refresh_seconds", DEFAULT_REFRESH_SECONDS)) * 1000, self._schedule_refresh)
+        self._watch_source_changes()
         self._ensure_visible_loop()
 
     def _build_window(self) -> None:
@@ -1423,7 +1464,7 @@ class UsageWidget:
         save_config(self.config)
 
     def refresh(self, force: bool = False) -> None:
-        if self.refreshing and not force:
+        if self.refreshing:
             return
         self.refreshing = True
         previous_marker = self._source_marker(self.current_sample)
@@ -1454,22 +1495,81 @@ class UsageWidget:
             return None
         return sample.get("source_event_at"), sample.get("source_path")
 
+    def _annotate_usage_changes(self, sample: dict[str, Any]) -> dict[str, Any]:
+        previous = self.current_sample
+        if not previous or self._source_marker(sample) == self._source_marker(previous):
+            return sample
+        current_windows = sample.get("windows")
+        previous_windows = previous.get("windows")
+        if not isinstance(current_windows, dict) or not isinstance(previous_windows, dict):
+            return sample
+
+        changed = False
+        updated_windows = dict(current_windows)
+        for key in ("five_hour", "weekly"):
+            current = current_windows.get(key)
+            old = previous_windows.get(key)
+            if not isinstance(current, dict) or not isinstance(old, dict):
+                continue
+            current_used = clean_float(current.get("used_percent"))
+            previous_used = clean_float(old.get("used_percent"))
+            if current_used is None or previous_used is None:
+                continue
+            delta = round(current_used - previous_used, 1)
+            if abs(delta) < 0.1:
+                continue
+            current = dict(current)
+            current["used_delta"] = delta
+            updated_windows[key] = current
+            changed = True
+            if key == "five_hour":
+                sample["primary_delta"] = delta
+        if changed:
+            sample["windows"] = updated_windows
+            sample["usage_changed"] = True
+        return sample
+
     def _poll_queue(self) -> None:
         try:
             while True:
                 sample = self.queue.get_nowait()
                 self.refreshing = False
+                sample = self._annotate_usage_changes(sample)
                 self._set_image(sample)
         except queue.Empty:
             pass
         if not self.closed:
-            self.root.after(250, self._poll_queue)
+            self.root.after(100, self._poll_queue)
 
     def _schedule_refresh(self) -> None:
         if self.closed:
             return
         self.refresh()
-        self.root.after(int(self.config.get("refresh_seconds", 25)) * 1000, self._schedule_refresh)
+        self.root.after(int(self.config.get("refresh_seconds", DEFAULT_REFRESH_SECONDS)) * 1000, self._schedule_refresh)
+
+    def _source_files_stamp(self) -> tuple[tuple[str, int, int], ...]:
+        codex_home = codex_home_from_config(self.config)
+        paths = [codex_home / "logs_2.sqlite", codex_home / "logs_2.sqlite-wal"]
+        source_path = str((self.current_sample or {}).get("source_path") or "").split("#", 1)[0]
+        if source_path:
+            paths.append(pathlib.Path(source_path))
+        stamps: list[tuple[str, int, int]] = []
+        for path in dict.fromkeys(paths):
+            with contextlib.suppress(OSError):
+                stat = path.stat()
+                stamps.append((str(path), stat.st_mtime_ns, stat.st_size))
+        return tuple(stamps)
+
+    def _watch_source_changes(self) -> None:
+        if self.closed:
+            return
+        stamp = self._source_files_stamp()
+        if self.last_source_stamp is None:
+            self.last_source_stamp = stamp
+        elif stamp != self.last_source_stamp:
+            self.last_source_stamp = stamp
+            self.refresh()
+        self.root.after(1000, self._watch_source_changes)
 
     def _ensure_visible_loop(self) -> None:
         if self.closed:
@@ -1794,6 +1894,17 @@ class ReaderTests(unittest.TestCase):
             self.assertEqual(sample["windows"]["five_hour"]["remaining_percent"], 54.0)
             self.assertEqual(sample["windows"]["weekly"]["remaining_percent"], 84.0)
             self.assertFalse(sample["windows"]["five_hour"]["stale"])
+
+    def test_reads_latest_rate_limit_from_large_session_tail(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td) / ".codex"
+            path = write_session_event(home, example_rate_limits())
+            event_line = path.read_text(encoding="utf-8")
+            prefix = ('{"type":"noise","payload":"padding"}\n' * 30000)
+            path.write_text(prefix + event_line, encoding="utf-8")
+            sample = CodexRateLimitReader({"codex_home": str(home)}).read()
+            self.assertTrue(sample["ok"])
+            self.assertEqual(sample["windows"]["five_hour"]["remaining_percent"], 54.0)
 
     def test_extracts_rate_limits_from_logs_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as td:
