@@ -59,7 +59,7 @@ RESOURCE_DIR = runtime_resource_dir()
 ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
-SPYGLASS_BASE_PATH = ASSET_DIR / "spyglass-base.png"
+SPYGLASS_BASE_PATH = ASSET_DIR / "spyglass-codex-v3.png"
 
 
 def default_data_dir() -> pathlib.Path:
@@ -1491,55 +1491,14 @@ def create_icon(path: pathlib.Path = ICON_PATH) -> pathlib.Path:
         raise RuntimeError("Pillow is unavailable")
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
     sizes = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)]
-    if SPYGLASS_BASE_PATH.exists() and CODEX_MARK_PATH.exists():
-        source_size = 1024
-        icon = Image.open(SPYGLASS_BASE_PATH).convert("RGBA").resize((source_size, source_size), Image.Resampling.LANCZOS)
-        lens_cx, lens_cy = 666, 448
-        lens_radius = 250
-
-        lens_mask = Image.new("L", (source_size, source_size), 0)
-        lens_draw = ImageDraw.Draw(lens_mask)
-        lens_draw.ellipse(
-            (lens_cx - lens_radius, lens_cy - lens_radius, lens_cx + lens_radius, lens_cy + lens_radius),
-            fill=255,
-        )
-
-        logo_size = 360
-        logo_x = lens_cx - logo_size // 2
-        logo_y = lens_cy - logo_size // 2 + 8
-        logo = Image.open(CODEX_MARK_PATH).convert("RGBA").resize((logo_size, logo_size), Image.Resampling.LANCZOS)
-
-        glow = Image.new("RGBA", (source_size, source_size), (0, 0, 0, 0))
-        glow_draw = ImageDraw.Draw(glow, "RGBA")
-        glow_draw.ellipse(
-            (logo_x - 28, logo_y - 28, logo_x + logo_size + 28, logo_y + logo_size + 28),
-            fill=(94, 179, 255, 95),
-        )
-        glow.putalpha(Image.composite(glow.getchannel("A"), Image.new("L", (source_size, source_size), 0), lens_mask))
-        icon.alpha_composite(glow.filter(ImageFilter.GaussianBlur(18)))
-
-        logo_layer = Image.new("RGBA", (source_size, source_size), (0, 0, 0, 0))
-        logo_layer.alpha_composite(logo, (logo_x, logo_y))
-        logo_alpha = Image.new("L", (source_size, source_size), 0)
-        logo_alpha.paste(logo.getchannel("A"), (logo_x, logo_y))
-        logo_alpha = Image.composite(logo_alpha, Image.new("L", (source_size, source_size), 0), lens_mask)
-        logo_layer.putalpha(logo_alpha.point(lambda alpha: int(alpha * 0.96)))
-        icon.alpha_composite(logo_layer)
-
-        gloss = Image.new("RGBA", (source_size, source_size), (0, 0, 0, 0))
-        gloss_draw = ImageDraw.Draw(gloss, "RGBA")
-        gloss_draw.ellipse((lens_cx + 78, lens_cy - 168, lens_cx + 190, lens_cy - 54), fill=(255, 255, 255, 82))
-        gloss_draw.arc(
-            (lens_cx - 210, lens_cy - 210, lens_cx + 210, lens_cy + 210),
-            start=208,
-            end=318,
-            fill=(255, 255, 255, 80),
-            width=18,
-        )
-        gloss.putalpha(Image.composite(gloss.getchannel("A"), Image.new("L", (source_size, source_size), 0), lens_mask))
-        icon.alpha_composite(gloss)
-
+    if SPYGLASS_BASE_PATH.exists():
+        icon = Image.open(SPYGLASS_BASE_PATH).convert("RGBA")
+        crop_size = min(icon.size)
+        left = (icon.width - crop_size) // 2
+        top = (icon.height - crop_size) // 2
+        icon = icon.crop((left, top, left + crop_size, top + crop_size))
         icon = icon.resize((256, 256), Image.Resampling.LANCZOS)
+        icon = icon.filter(ImageFilter.UnsharpMask(radius=0.8, percent=145, threshold=2))
         icon.save(path, format="ICO", sizes=sizes)
         return path
 
