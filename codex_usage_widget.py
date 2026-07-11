@@ -59,7 +59,7 @@ RESOURCE_DIR = runtime_resource_dir()
 ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
-WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v4-blue.png"
+WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v6-cutout.png"
 SPYGLASS_BASE_PATH = WIDGET_MARK_PATH
 
 
