@@ -59,7 +59,7 @@ RESOURCE_DIR = runtime_resource_dir()
 ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
-SPYGLASS_BASE_PATH = ASSET_DIR / "spyglass-codex-v3.png"
+SPYGLASS_BASE_PATH = ASSET_DIR / "spyglass-codex-v4-blue.png"
 
 
 def default_data_dir() -> pathlib.Path:
