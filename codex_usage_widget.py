@@ -59,7 +59,8 @@ RESOURCE_DIR = runtime_resource_dir()
 ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
-SPYGLASS_BASE_PATH = ASSET_DIR / "spyglass-codex-v4-blue.png"
+WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v4-blue.png"
+SPYGLASS_BASE_PATH = WIDGET_MARK_PATH
 
 
 def default_data_dir() -> pathlib.Path:
@@ -908,10 +909,10 @@ class CardRenderer:
         self.codex_mark = self._load_codex_mark()
 
     def _load_codex_mark(self) -> Image.Image | None:
-        if Image is None or not CODEX_MARK_PATH.exists():
+        if Image is None or not WIDGET_MARK_PATH.exists():
             return None
         try:
-            icon = Image.open(CODEX_MARK_PATH).convert("RGBA")
+            icon = Image.open(WIDGET_MARK_PATH).convert("RGBA")
             return icon.resize((self.sc(34), self.sc(34)), Image.Resampling.LANCZOS)
         except Exception as exc:
             log_line(f"Failed to load Codex mark: {exc}")
