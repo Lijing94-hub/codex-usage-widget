@@ -59,7 +59,7 @@ RESOURCE_DIR = runtime_resource_dir()
 ASSET_DIR = RESOURCE_DIR / "assets"
 ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
-WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v7-framed-white.png"
+WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v8-clean-frame.png"
 SPYGLASS_BASE_PATH = WIDGET_MARK_PATH
 
 
@@ -930,7 +930,12 @@ class CardRenderer:
             return None
         try:
             icon = Image.open(WIDGET_MARK_PATH).convert("RGBA")
-            return icon.resize((self.sc(34), self.sc(34)), Image.Resampling.LANCZOS)
+            canvas_size = self.sc(34)
+            art_size = self.sc(32)
+            art = icon.resize((art_size, art_size), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+            canvas.alpha_composite(art, ((canvas_size - art_size) // 2, (canvas_size - art_size) // 2))
+            return canvas
         except Exception as exc:
             log_line(f"Failed to load Codex mark: {exc}")
             return None
@@ -1598,9 +1603,19 @@ def create_icon(path: pathlib.Path = ICON_PATH) -> pathlib.Path:
         left = (icon.width - crop_size) // 2
         top = (icon.height - crop_size) // 2
         icon = icon.crop((left, top, left + crop_size, top + crop_size))
-        icon = icon.resize((256, 256), Image.Resampling.LANCZOS)
-        icon = icon.filter(ImageFilter.UnsharpMask(radius=0.8, percent=145, threshold=2))
-        icon.save(path, format="ICO", sizes=sizes)
+        art = icon.resize((232, 232), Image.Resampling.LANCZOS)
+        art = art.filter(ImageFilter.UnsharpMask(radius=0.8, percent=145, threshold=2))
+        icon = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+        icon.alpha_composite(art, (12, 12))
+        frames: list[Image.Image] = []
+        for width, height in sizes:
+            frame = icon.resize((width, height), Image.Resampling.LANCZOS)
+            alpha = frame.getchannel("A")
+            alpha_draw = ImageDraw.Draw(alpha)
+            alpha_draw.rectangle((0, 0, width - 1, height - 1), outline=0, width=1)
+            frame.putalpha(alpha)
+            frames.append(frame)
+        frames[-1].save(path, format="ICO", sizes=sizes, append_images=frames[:-1])
         return path
 
     size = 1024
