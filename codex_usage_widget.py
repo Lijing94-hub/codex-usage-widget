@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
 
 
 APP_NAME = "Codex Usage Widget"
-APP_VERSION = 2
+APP_VERSION = 3
 
 
 def runtime_app_dir() -> pathlib.Path:
@@ -62,6 +62,7 @@ ICON_PATH = ASSET_DIR / "codex-usage.ico"
 CODEX_MARK_PATH = ASSET_DIR / "codex-color.png"
 WIDGET_MARK_PATH = ASSET_DIR / "spyglass-codex-v8-clean-frame.png"
 SPYGLASS_BASE_PATH = WIDGET_MARK_PATH
+GLASS_PANEL_PATH = ASSET_DIR / "image2-glass-panel.png"
 
 
 def default_data_dir() -> pathlib.Path:
@@ -105,6 +106,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_updated": "Synced",
         "window_5h": "5H window",
         "window_7d": "7D window",
+        "remaining": "Remaining",
         "plan_expires": "Plan ends",
         "resets_left": "Resets left",
         "weekly_cycle": "Based on 7D cycle",
@@ -116,15 +118,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "model_no_5h": "No 5H window for current model",
         "reset_done": "Reset",
         "stale_snapshot": "Waiting for new Codex record",
-        "reset": " reset",
+        "reset": " to reset",
         "unknown": "Unknown",
         "unknown_time": "Unknown time",
         "reset_reached": "Reset reached",
-        "minute_after": " min left",
-        "hour_after": " h left",
-        "hour_min_after": "{hours} h {mins} m left",
-        "day_after": "{days} d left",
-        "day_hour_after": "{days} d {hours} h left",
+        "minute_after": "m",
+        "hour_after": "h",
+        "hour_min_after": "{hours}h {mins}m",
+        "day_after": "{days}d",
+        "day_hour_after": "{days}d {hours}h",
         "just_now": "Just now",
         "minute_ago": "{value} min ago",
         "hour_ago": "{value} h ago",
@@ -172,6 +174,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_updated": "已同步",
         "window_5h": "5 小时窗口",
         "window_7d": "1 周窗口",
+        "remaining": "剩余",
         "plan_expires": "套餐到期",
         "resets_left": "剩余重置",
         "weekly_cycle": "按 7D 周期计算",
@@ -940,6 +943,24 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
     return ImageFont.load_default()
 
 
+def load_display_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    if ImageFont is None:
+        raise RuntimeError("Pillow is unavailable")
+    windir = pathlib.Path(os.environ.get("WINDIR", r"C:\Windows"))
+    mac_fonts = pathlib.Path("/System/Library/Fonts")
+    candidates = [
+        mac_fonts / ("SFNS.ttf"),
+        mac_fonts / ("SFNSDisplay.ttf"),
+        windir / "Fonts" / ("seguisb.ttf" if bold else "SegUIVar.ttf"),
+        windir / "Fonts" / ("segoeuib.ttf" if bold else "segoeui.ttf"),
+    ]
+    for path in candidates:
+        with contextlib.suppress(Exception):
+            if path.exists():
+                return ImageFont.truetype(str(path), size=size)
+    return load_font(size, bold=bold)
+
+
 def text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
     box = draw.textbbox((0, 0), text, font=font)
     return box[2] - box[0]
@@ -991,15 +1012,30 @@ class CardRenderer:
     def __init__(self) -> None:
         if Image is None or ImageDraw is None or ImageFilter is None:
             raise RuntimeError("Pillow is unavailable")
+        self._panel_surfaces: dict[bool, Image.Image] = {}
+        self.glass_panel = self._load_glass_panel()
         self.codex_mark = self._load_codex_mark()
+
+    def _load_glass_panel(self) -> Image.Image | None:
+        if Image is None or not GLASS_PANEL_PATH.exists():
+            return None
+        try:
+            panel = Image.open(GLASS_PANEL_PATH).convert("RGBA")
+            expected = (self.WIDTH * self.SCALE, self.HEIGHT * self.SCALE)
+            if panel.size != expected:
+                panel = panel.resize(expected, Image.Resampling.LANCZOS)
+            return panel
+        except Exception as exc:
+            log_line(f"Failed to load Image-2 glass panel: {exc}")
+            return None
 
     def _load_codex_mark(self) -> Image.Image | None:
         if Image is None or not WIDGET_MARK_PATH.exists():
             return None
         try:
             icon = Image.open(WIDGET_MARK_PATH).convert("RGBA")
-            canvas_size = self.sc(34)
-            art_size = self.sc(32)
+            canvas_size = self.sc(40)
+            art_size = self.sc(38)
             art = icon.resize((art_size, art_size), Image.Resampling.LANCZOS)
             canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
             canvas.alpha_composite(art, ((canvas_size - art_size) // 2, (canvas_size - art_size) // 2))
@@ -1023,7 +1059,7 @@ class CardRenderer:
         draw = ImageDraw.Draw(image)
 
         self._draw_header(image, draw, sample)
-        self._draw_week_limit(draw, sample)
+        self._draw_week_limit(image, draw, sample)
         self._draw_account_info(draw, sample)
         self._draw_footer(draw, sample)
 
@@ -1034,69 +1070,183 @@ class CardRenderer:
         background = Image.new("RGB", image.size, self.KEY)
         mask = Image.new("L", image.size, 0)
         draw = ImageDraw.Draw(mask)
-        draw.rounded_rectangle((0, 0, image.size[0] - 1, image.size[1] - 1), radius=22, fill=255)
+        draw.rounded_rectangle((0, 0, image.size[0] - 1, image.size[1] - 1), radius=28, fill=255)
         background.paste(image, (0, 0), mask)
         return background
 
     def _paint_acrylic_panel(self, image: Image.Image, hover: bool = False) -> Image.Image:
-        width, height = image.size
-        x1, y1, x2, y2 = 0, 0, width - 1, height - 1
-        mask = Image.new("L", (width, height), 255)
+        cached = self._panel_surfaces.get(hover)
+        if cached is not None:
+            return Image.alpha_composite(image, cached)
 
+        if self.glass_panel is not None:
+            panel = self.glass_panel.copy()
+            if hover:
+                glass_lift = Image.new("RGBA", panel.size, (154, 174, 188, 18))
+                panel = Image.alpha_composite(panel, glass_lift)
+            self._panel_surfaces[hover] = panel.copy()
+            return Image.alpha_composite(image, panel)
+
+        width, height = image.size
         panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         panel_draw = ImageDraw.Draw(panel)
-        for y in range(y1, y2 + 1):
-            ratio = (y - y1) / max(1, y2 - y1)
-            if hover:
-                red = int(34 - 12 * ratio)
-                green = int(44 - 14 * ratio)
-                blue = int(62 - 18 * ratio)
-            else:
-                red = int(18 - 8 * ratio)
-                green = int(26 - 10 * ratio)
-                blue = int(42 - 14 * ratio)
-            panel_draw.line((x1, y, x2, y), fill=(red, green, blue, 255))
-        panel.putalpha(mask)
-        image = Image.alpha_composite(image, panel)
+        for y in range(height):
+            ratio = y / max(1, height - 1)
+            top = (36, 41, 48) if hover else (30, 35, 41)
+            bottom = (18, 23, 29) if hover else (15, 20, 25)
+            red = int(top[0] + (bottom[0] - top[0]) * ratio)
+            green = int(top[1] + (bottom[1] - top[1]) * ratio)
+            blue = int(top[2] + (bottom[2] - top[2]) * ratio)
+            panel_draw.line((0, y, width, y), fill=(red, green, blue, 255))
 
-        highlight = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        hdraw = ImageDraw.Draw(highlight)
-        for offset in range(0, 130, 2):
-            alpha = max(0, (42 if hover else 30) - offset // 4)
-            hdraw.line(self.xy(-30, 44 + offset, 336, -52 + offset), fill=(255, 255, 255, alpha), width=self.sc(1))
-        hdraw.rectangle(self.xy(0, 0, 304, 96), fill=(255, 255, 255, 18 if hover else 11))
-        hdraw.rectangle(self.xy(0, 410, 304, 536), fill=(22, 163, 74, 12 if hover else 8))
-        highlight.putalpha(Image.composite(highlight.getchannel("A"), Image.new("L", (width, height), 0), mask))
-        image = Image.alpha_composite(image, highlight)
+        lighting = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        light_draw = ImageDraw.Draw(lighting)
+        light_draw.ellipse(
+            (-self.sc(70), -self.sc(135), self.sc(360), self.sc(175)),
+            fill=(218, 226, 233, 20 if hover else 12),
+        )
+        light_draw.ellipse(
+            (self.sc(176), -self.sc(95), self.sc(430), self.sc(320)),
+            fill=(132, 169, 192, 88 if hover else 72),
+        )
+        light_draw.ellipse(
+            (self.sc(220), self.sc(80), self.sc(430), self.sc(570)),
+            fill=(105, 136, 158, 58 if hover else 45),
+        )
+        light_draw.ellipse(
+            (self.sc(22), self.sc(105), self.sc(250), self.sc(455)),
+            fill=(0, 0, 0, 54 if hover else 62),
+        )
+        lighting = lighting.filter(ImageFilter.GaussianBlur(self.sc(54)))
+        panel = Image.alpha_composite(panel, lighting)
 
-        noise = Image.effect_noise((width, height), 9).convert("L")
-        noise_alpha = noise.point(lambda value: (10 if hover else 7) if value > 134 else 0)
-        noise_alpha = Image.composite(noise_alpha, Image.new("L", (width, height), 0), mask)
+        edge_glow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        edge_draw = ImageDraw.Draw(edge_glow)
+        edge_draw.rounded_rectangle(
+            (self.sc(5), self.sc(5), width - self.sc(5), height - self.sc(5)),
+            radius=self.sc(24),
+            outline=(170, 181, 190, 178 if hover else 150),
+            width=self.sc(18),
+        )
+        edge_glow = edge_glow.filter(ImageFilter.GaussianBlur(self.sc(14)))
+        panel = Image.alpha_composite(panel, edge_glow)
+
+        rim = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        rim_draw = ImageDraw.Draw(rim)
+        rim_draw.rounded_rectangle(
+            (self.sc(1), self.sc(1), width - self.sc(1) - 1, height - self.sc(1) - 1),
+            radius=self.sc(27),
+            outline=(177, 190, 200, 88 if hover else 68),
+            width=self.sc(1),
+        )
+        rim_draw.rounded_rectangle(
+            (self.sc(3), self.sc(3), width - self.sc(3) - 1, height - self.sc(3) - 1),
+            radius=self.sc(25),
+            outline=(240, 245, 249, 18 if hover else 11),
+            width=1,
+        )
+        rim_draw.line(
+            (self.sc(28), self.sc(2), width - self.sc(28), self.sc(2)),
+            fill=(225, 234, 241, 65 if hover else 45),
+            width=1,
+        )
+        rim_draw.line(
+            (width - self.sc(2), self.sc(28), width - self.sc(2), self.sc(250)),
+            fill=(190, 208, 220, 60 if hover else 40),
+            width=1,
+        )
+        panel = Image.alpha_composite(panel, rim)
+
+        noise = Image.effect_noise((width, height), 8).convert("L")
+        noise_alpha = noise.point(lambda value: (6 if hover else 4) if value > 142 else 0)
         noise_layer = Image.new("RGBA", (width, height), (255, 255, 255, 0))
         noise_layer.putalpha(noise_alpha)
-        return Image.alpha_composite(image, noise_layer)
+        panel = Image.alpha_composite(panel, noise_layer)
+        self._panel_surfaces[hover] = panel.copy()
+        return Image.alpha_composite(image, panel)
 
     def _font(self, size: int, bold: bool = False) -> ImageFont.ImageFont:
         return load_font(self.sc(size), bold=bold)
 
+    def _display_font(self, size: int, bold: bool = False) -> ImageFont.ImageFont:
+        return load_display_font(self.sc(size), bold=bold)
+
+    def _draw_gradient_text(
+        self,
+        image: Image.Image,
+        position: tuple[int, int],
+        text: str,
+        font: ImageFont.ImageFont,
+        top: str,
+        bottom: str,
+        vertical_scale: float = 1.0,
+    ) -> None:
+        mask = Image.new("L", image.size, 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.text(self.xy(*position), text, font=font, fill=255)
+        bounds = mask.getbbox()
+        if bounds is None:
+            return
+        if abs(vertical_scale - 1.0) > 0.01:
+            glyph = mask.crop(bounds)
+            stretched_height = max(1, int(round(glyph.height * vertical_scale)))
+            glyph = glyph.resize((glyph.width, stretched_height), Image.Resampling.LANCZOS)
+            mask = Image.new("L", image.size, 0)
+            mask.paste(glyph, (bounds[0], bounds[1]))
+            bounds = mask.getbbox()
+            if bounds is None:
+                return
+
+        glow_alpha = mask.filter(ImageFilter.GaussianBlur(self.sc(5))).point(lambda value: int(value * 0.15))
+        glow = Image.new("RGBA", image.size, self._hex_rgba(bottom, 0))
+        glow.putalpha(glow_alpha)
+        image.alpha_composite(glow)
+
+        top_rgb = self._hex_rgb(top)
+        bottom_rgb = self._hex_rgb(bottom)
+        gradient = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        gradient_draw = ImageDraw.Draw(gradient)
+        y1, y2 = bounds[1], max(bounds[1] + 1, bounds[3] - 1)
+        for y in range(y1, y2 + 1):
+            ratio = (y - y1) / max(1, y2 - y1)
+            color = tuple(int(top_rgb[index] + (bottom_rgb[index] - top_rgb[index]) * ratio) for index in range(3))
+            gradient_draw.line((bounds[0], y, bounds[2], y), fill=(*color, 255))
+        gradient.putalpha(mask)
+        image.alpha_composite(gradient)
+
+    @staticmethod
+    def _hex_rgb(color: str) -> tuple[int, int, int]:
+        value = color.lstrip("#")
+        return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
+    @classmethod
+    def _hex_rgba(cls, color: str, alpha: int) -> tuple[int, int, int, int]:
+        return (*cls._hex_rgb(color), alpha)
+
     def _draw_header(self, image: Image.Image, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         ink = "#F8FAFC"
-        muted = "#94A3B8"
-        self._draw_codex_mark(image, draw, 38, 38)
+        muted = "#8E9AA8"
+        self._draw_codex_mark(image, draw, 39, 47)
 
-        draw.text(self.xy(68, 19), "Codex Limit", font=self._font(18, True), fill=ink)
-        draw.text(self.xy(69, 45), tr("subtitle"), font=self._font(10, True), fill=muted)
+        draw.text(self.xy(76, 28), "Codex Limit", font=self._display_font(19, True), fill=ink)
+        draw.text(self.xy(76, 53), tr("subtitle"), font=self._font(10, True), fill=muted)
         pill_text = self._status_text(sample)
         status_color = self._status_color(sample)
-        pill_width = min(132, max(78, int(text_width(draw, pill_text, self._font(10, True)) / self.SCALE) + 42))
+        pill_width = min(112, max(62, int(text_width(draw, pill_text, self._font(10, True)) / self.SCALE) + 34))
         pill_x2 = 286
         pill_x1 = pill_x2 - pill_width
-        draw.rounded_rectangle(self.xy(pill_x1, 70, pill_x2, 98), radius=self.sc(12), fill="#18263A")
-        draw.ellipse(self.xy(pill_x1 + 13, 80, pill_x1 + 22, 89), fill=status_color)
-        draw.text(self.xy(pill_x1 + 32, 76), pill_text, font=self._font(10, True), fill="#E2E8F0")
+        draw.rounded_rectangle(
+            self.xy(pill_x1, 76, pill_x2, 99),
+            radius=self.sc(12),
+            fill="#31433F",
+            outline="#526A65",
+            width=self.sc(1),
+        )
+        draw.ellipse(self.xy(pill_x1 + 11, 83, pill_x1 + 19, 91), fill=status_color)
+        draw.text(self.xy(pill_x1 + 27, 81), pill_text, font=self._font(10, True), fill="#EDF3F5")
 
-        self._draw_refresh_control(draw, 225, 37)
-        self._draw_close_control(draw, 272, 37)
+        self._draw_refresh_control(draw, 228, 46)
+        self._draw_close_control(draw, 271, 46)
 
     def _status_text(self, sample: dict[str, Any]) -> str:
         if sample.get("refreshing"):
@@ -1141,6 +1291,18 @@ class CardRenderer:
         draw.line([self.xy(cx - 4, cy - 4), self.xy(cx + 4, cy + 4)], fill=color, width=self.sc(1.6))
         draw.line([self.xy(cx + 4, cy - 4), self.xy(cx - 4, cy + 4)], fill=color, width=self.sc(1.6))
 
+    def _draw_calendar_icon(self, draw: ImageDraw.ImageDraw, cx: int, cy: int, color: str) -> None:
+        draw.rounded_rectangle(self.xy(cx - 7, cy - 6, cx + 7, cy + 7), radius=self.sc(3), outline=color, width=self.sc(1.4))
+        draw.line(self.xy(cx - 7, cy - 2, cx + 7, cy - 2), fill=color, width=self.sc(1.2))
+        draw.line(self.xy(cx - 4, cy - 8, cx - 4, cy - 4), fill=color, width=self.sc(1.5))
+        draw.line(self.xy(cx + 4, cy - 8, cx + 4, cy - 4), fill=color, width=self.sc(1.5))
+        draw.ellipse(self.xy(cx - 1, cy + 1, cx + 1, cy + 3), fill=color)
+
+    def _draw_clock_icon(self, draw: ImageDraw.ImageDraw, cx: int, cy: int, color: str) -> None:
+        draw.ellipse(self.xy(cx - 6, cy - 6, cx + 6, cy + 6), outline=color, width=self.sc(1.2))
+        draw.line(self.xy(cx, cy, cx, cy - 3), fill=color, width=self.sc(1.2))
+        draw.line(self.xy(cx, cy, cx + 3, cy + 2), fill=color, width=self.sc(1.2))
+
     def _rounded_polyline(self, draw: ImageDraw.ImageDraw, points: list[tuple[float, float]], color: str, width: float) -> None:
         scaled_width = self.sc(width)
         for start, end in zip(points, points[1:]):
@@ -1150,10 +1312,11 @@ class CardRenderer:
             draw.ellipse(self.xy(x - radius, y - radius, x + radius, y + radius), fill=color)
 
     def _draw_refresh_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-        fill = "#172234" if sys.platform != "darwin" else "#182334"
-        outline = "#26354A" if sys.platform != "darwin" else "#2C3A4E"
-        draw.ellipse(self.xy(cx - 18, cy - 18, cx + 18, cy + 18), fill=fill, outline=outline, width=self.sc(1))
-        self._draw_refresh_icon(draw, cx, cy, "#D8E2F2")
+        fill = "#35414B" if sys.platform != "darwin" else "#303741"
+        outline = "#6A7A88"
+        draw.ellipse(self.xy(cx - 16, cy - 16, cx + 16, cy + 16), fill=fill, outline=outline, width=self.sc(1))
+        draw.arc(self.xy(cx - 14, cy - 14, cx + 14, cy + 14), 205, 330, fill="#A4B2BF", width=self.sc(1))
+        self._draw_refresh_icon(draw, cx, cy, "#F0F4F8")
 
     def _draw_close_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
         if sys.platform == "darwin":
@@ -1162,15 +1325,16 @@ class CardRenderer:
             draw.line([self.xy(cx - 3, cy - 3), self.xy(cx + 3, cy + 3)], fill="#7A1F1A", width=self.sc(1.15))
             draw.line([self.xy(cx + 3, cy - 3), self.xy(cx - 3, cy + 3)], fill="#7A1F1A", width=self.sc(1.15))
             return
-        draw.ellipse(self.xy(cx - 18, cy - 18, cx + 18, cy + 18), fill="#131E2F", outline="#26354A", width=self.sc(1))
-        self._draw_close_icon(draw, cx, cy, "#D7DFEA")
+        draw.ellipse(self.xy(cx - 16, cy - 16, cx + 16, cy + 16), fill="#35414B", outline="#6A7A88", width=self.sc(1))
+        draw.arc(self.xy(cx - 14, cy - 14, cx + 14, cy + 14), 205, 330, fill="#A4B2BF", width=self.sc(1))
+        self._draw_close_icon(draw, cx, cy, "#F0F4F8")
 
     def _draw_codex_mark(self, image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
         if self.codex_mark is not None:
-            image.alpha_composite(self.codex_mark, dest=self.xy(cx - 17, cy - 17))
+            image.alpha_composite(self.codex_mark, dest=self.xy(cx - 20, cy - 20))
             return
-        draw.rounded_rectangle(self.xy(cx - 17, cy - 17, cx + 17, cy + 17), radius=self.sc(10), fill="#0B1220")
-        draw.rounded_rectangle(self.xy(cx - 16, cy - 16, cx + 16, cy + 16), radius=self.sc(9), outline="#263B5A", width=self.sc(1))
+        draw.rounded_rectangle(self.xy(cx - 21, cy - 21, cx + 21, cy + 21), radius=self.sc(11), fill="#0B1220")
+        draw.rounded_rectangle(self.xy(cx - 20, cy - 20, cx + 20, cy + 20), radius=self.sc(10), outline="#263B5A", width=self.sc(1))
         points = [
             ((cx - 3, cy - 12), (cx + 9, cy - 6)),
             ((cx + 9, cy - 6), (cx + 10, cy + 7)),
@@ -1201,13 +1365,11 @@ class CardRenderer:
             return "#94A3B8", 0.0, available, stale
         ratio = clamp((clean_float(remaining) or 0.0) / 100.0, 0.0, 1.0)
         value = clean_float(remaining) or 0.0
-        if value >= 60:
-            return "#4ADE80", ratio, available, stale
         if value >= 25:
-            return "#60A5FA", ratio, available, stale
+            return "#73E6A0", ratio, available, stale
         if value >= 12:
-            return "#FBBF24", ratio, available, stale
-        return "#F87171", ratio, available, stale
+            return "#F5C451", ratio, available, stale
+        return "#FF6B6B", ratio, available, stale
 
     def _remaining_label(self, window: dict[str, Any], stale: bool) -> str:
         if stale:
@@ -1259,33 +1421,68 @@ class CardRenderer:
 
         self._draw_progress(draw, x1 + 22, y2 - 34, x2 - 22, y2 - 18, ratio, color, available and not stale)
 
-    def _draw_week_limit(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
+    def _draw_week_limit(self, image: Image.Image, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         window = (sample.get("windows") or {}).get("weekly") or empty_window()
         color, ratio, available, stale = self._window_style(window)
-        x1, y1, x2, y2 = 18, 118, 286, 330
-        self._draw_soft_shadow(draw, x1, y1, x2, y2, 24)
-        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(24), fill="#101A29")
+        x1, x2 = 40, 280
 
-        draw.text(self.xy(x1 + 22, y1 + 22), "7D", font=self._font(20, True), fill="#F8FAFC")
+        self._draw_calendar_icon(draw, 39, 144, "#85919E")
+        draw.text(self.xy(57, 132), "7D", font=self._display_font(20, True), fill="#F8FAFC")
         used_text = self._used_label(window, stale, "--")
-        used_font = self._font(10, True)
-        used_width = min(118, max(64, int(text_width(draw, used_text, used_font) / self.SCALE) + 20))
-        draw.rounded_rectangle(self.xy(x2 - used_width - 18, y1 + 19, x2 - 18, y1 + 47), radius=self.sc(11), fill="#2A1F19")
-        draw.text(self.xy(x2 - used_width / 2 - 18, y1 + 33), used_text, font=used_font, fill="#FDBA74", anchor="mm")
+        used_font = self._font(11, True)
+        used_width = min(118, max(74, int(text_width(draw, used_text, used_font) / self.SCALE) + 24))
+        draw.rounded_rectangle(
+            self.xy(286 - used_width, 130, 286, 158),
+            radius=self.sc(14),
+            fill="#44342E",
+            outline="#64493D",
+            width=self.sc(1),
+        )
+        draw.text(self.xy(286 - used_width / 2, 144), used_text, font=used_font, fill="#FF9A70", anchor="mm")
 
         main = self._remaining_label(window, stale)
-        main_font = self._font(72 if not stale else 34, True)
-        draw.text(self.xy(x1 + 22, y1 + 68), main, font=main_font, fill=color)
+        main_size = 94 if not stale else 48
+        main_font = self._display_font(main_size, True)
+        while main_size > 60 and text_width(draw, main, main_font) > self.sc(238):
+            main_size -= 2
+            main_font = self._display_font(main_size, True)
+        if color == "#73E6A0":
+            gradient_top, gradient_bottom = "#B0F0B9", "#68CA82"
+        elif color == "#F5C451":
+            gradient_top, gradient_bottom = "#FFE3A3", "#F3B946"
+        elif color == "#FF6B6B":
+            gradient_top, gradient_bottom = "#FFB2A2", "#FF6B5B"
+        else:
+            gradient_top, gradient_bottom = "#C5CFDA", "#8492A1"
+        self._draw_gradient_text(
+            image,
+            (42, 153 if not stale else 169),
+            main,
+            main_font,
+            gradient_top,
+            gradient_bottom,
+            vertical_scale=1.22 if not stale else 1.0,
+        )
 
-        reset = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
+        reset_core = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
+        reset_suffix = tr("reset") if available and not stale else ""
         if stale:
-            reset = tr("stale_snapshot")
-        elif available:
-            reset = f"{reset}{tr('reset')}"
-        reset = fit_text(draw, reset, self._font(12, True), self.sc(224))
-        draw.text(self.xy(x1 + 24, y1 + 148), reset, font=self._font(12, True), fill="#94A3B8")
+            reset_core = tr("stale_snapshot")
+        reset_font = self._font(13, True)
+        combined_reset = fit_text(draw, f"{reset_core}{reset_suffix}", reset_font, self.sc(240))
+        if combined_reset == f"{reset_core}{reset_suffix}" and reset_suffix:
+            draw.text(self.xy(x1, 282), reset_core, font=reset_font, fill="#69B8F7")
+            reset_x = x1 + text_width(draw, reset_core, reset_font) / self.SCALE
+            draw.text(self.xy(reset_x, 282), reset_suffix, font=reset_font, fill="#A0AAB5")
+        else:
+            draw.text(self.xy(x1, 282), combined_reset, font=reset_font, fill="#8FC9FF" if available and not stale else "#8B98A6")
 
-        self._draw_progress(draw, x1 + 22, y2 - 34, x2 - 22, y2 - 18, ratio, color, available and not stale)
+        self._draw_progress(draw, x1, 310, x2, 324, ratio, color, available and not stale)
+        remaining_text = f"{tr('remaining')} {percent_text(window.get('remaining_percent'))}" if available else tr("waiting")
+        used_summary = f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else "--"
+        draw.text(self.xy(x1, 335), remaining_text, font=self._font(10, True), fill=color)
+        draw.text(self.xy(x2, 335), used_summary, font=self._font(10, True), fill="#FF8B62", anchor="ra")
+        draw.line(self.xy(x1, 369, x2, 369), fill="#3B444C", width=self.sc(1))
 
     def _draw_account_info(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         plan = str(sample.get("plan_type") or "Codex").upper()
@@ -1301,24 +1498,27 @@ class CardRenderer:
             expiry_note = plan
 
         reset_value = tr("times_left", value=resets) if resets is not None else "--"
-        tiles = (
-            ((18, 344, 148, 470), tr("plan_expires"), expiry_value, expiry_note, "#60A5FA"),
-            ((156, 344, 286, 470), tr("resets_left"), reset_value, tr("weekly_cycle"), "#4ADE80"),
+        draw.line(self.xy(158, 388, 158, 478), fill="#3B444C", width=self.sc(1))
+        columns = (
+            (40, 148, 47, tr("plan_expires"), expiry_value, expiry_note, "calendar"),
+            (188, 280, 195, tr("resets_left"), reset_value, tr("weekly_cycle"), "cycle"),
         )
-        for box, label, value, note, accent in tiles:
-            x1, y1, x2, y2 = box
-            self._draw_soft_shadow(draw, x1, y1, x2, y2, 18)
-            draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(18), fill="#101A29")
-            draw.rounded_rectangle(self.xy(x1 + 16, y1 + 17, x1 + 20, y1 + 35), radius=self.sc(2), fill=accent)
-            draw.text(self.xy(x1 + 30, y1 + 18), label, font=self._font(10, True), fill="#94A3B8")
-            value = fit_text(draw, value, self._font(27, True), self.sc(98), suffix="")
-            draw.text(self.xy(x1 + 16, y1 + 50), value, font=self._font(27, True), fill="#F8FAFC")
-            note = fit_text(draw, note, self._font(10, True), self.sc(98), suffix="")
-            draw.text(self.xy(x1 + 16, y2 - 27), note, font=self._font(10, True), fill="#64748B")
+        for x1, x2, icon_x, label, value, note, icon in columns:
+            icon_y = 393
+            if icon == "calendar":
+                self._draw_clock_icon(draw, icon_x, icon_y, "#69B9F5")
+            else:
+                self._draw_refresh_icon(draw, icon_x, icon_y, "#69DE91")
+            draw.text(self.xy(x1, 405), label, font=self._font(11, True), fill="#919CA8")
+            value_font = self._font(34, True) if any(ord(char) > 127 for char in value) else self._display_font(34, True)
+            value = fit_text(draw, value, value_font, self.sc(x2 - x1), suffix="")
+            draw.text(self.xy(x1, 423), value, font=value_font, fill="#F8FAFC")
+            note = fit_text(draw, note, self._font(10, True), self.sc(x2 - x1), suffix="")
+            draw.text(self.xy(x1, 465), note, font=self._font(10, True), fill="#748291")
 
     def _draw_progress(self, draw: ImageDraw.ImageDraw, x1: int, y1: int, x2: int, y2: int, ratio: float, color: str, active: bool) -> None:
         radius = self.sc((y2 - y1) / 2)
-        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=radius, fill="#22334A")
+        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=radius, fill="#3A434C")
         if not active:
             fill_x2 = x1 + max(10, int((x2 - x1) * clamp(ratio, 0.0, 1.0)))
             draw.rounded_rectangle(self.xy(x1, y1, fill_x2, y2), radius=radius, fill=color)
@@ -1328,9 +1528,10 @@ class CardRenderer:
         if split_x > x1:
             draw.rounded_rectangle(self.xy(x1, y1, split_x, y2), radius=radius, fill=color)
         if split_x < x2:
-            draw.rounded_rectangle(self.xy(split_x, y1, x2, y2), radius=radius, fill="#F97316")
+            draw.rounded_rectangle(self.xy(split_x, y1, x2, y2), radius=radius, fill="#F47C59")
         if x1 < split_x < x2:
-            draw.rectangle(self.xy(split_x - 1, y1, split_x + 1, y2), fill="#0B1220")
+            draw.rectangle(self.xy(split_x - 1.5, y1, split_x + 1.5, y2), fill="#171C21")
+        draw.line(self.xy(x1 + 7, y1 + 1, x2 - 7, y1 + 1), fill="#A8B4BB", width=1)
 
     def _draw_soft_shadow(self, draw: ImageDraw.ImageDraw, x1: int, y1: int, x2: int, y2: int, radius: int) -> None:
         draw.rounded_rectangle(self.xy(x1 + 2, y1 + 4, x2 + 2, y2 + 5), radius=self.sc(radius), fill="#07101F")
@@ -1424,9 +1625,13 @@ class CardRenderer:
             footer = errors[0] if errors else (sample.get("note") or tr("footer_waiting"))
         if sample.get("source_state") == "cache":
             footer = tr("footer_cache", age=format_age(source_event))
-        footer_font = self._font(12, True)
-        footer = fit_text(draw, footer, footer_font, self.sc(260))
-        draw.text(self.xy(152, 502), footer, font=footer_font, fill="#94A3B8", anchor="mm")
+        footer_font = self._font(11, True)
+        footer = fit_text(draw, footer, footer_font, self.sc(244))
+        footer_width = text_width(draw, footer, footer_font) / self.SCALE
+        group_width = footer_width + 19
+        start_x = 152 - group_width / 2
+        self._draw_clock_icon(draw, int(start_x + 6), 507, "#71808D")
+        draw.text(self.xy(start_x + 19, 507), footer, font=footer_font, fill="#8D99A5", anchor="lm")
 
 
 class UsageWidget:
@@ -1507,7 +1712,7 @@ class UsageWidget:
         self.root.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
 
     def _apply_window_shape(self) -> None:
-        apply_rounded_window_region(self.root, self.WIDTH, self.HEIGHT, 22)
+        apply_rounded_window_region(self.root, self.WIDTH, self.HEIGHT, 28)
 
     def _set_image(self, sample: dict[str, Any]) -> None:
         self.current_sample = sample
@@ -1539,10 +1744,10 @@ class UsageWidget:
 
     def _end_drag(self, event: tk.Event) -> None:
         if not self.drag_moved:
-            if self._inside(event.x, event.y, 200, 14, 250, 62):
+            if self._inside(event.x, event.y, 200, 22, 250, 72):
                 self.refresh(force=True)
                 return
-            if self._inside(event.x, event.y, 247, 14, 297, 62):
+            if self._inside(event.x, event.y, 246, 22, 297, 72):
                 self.quit()
                 return
         self.config["window_x"] = self.root.winfo_x()
@@ -2130,8 +2335,13 @@ class ReaderTests(unittest.TestCase):
         sample["source_event_at"] = now_ts()
         sample["plan_type"] = "plus"
         sample["windows"] = normalize_rate_limits(example_rate_limits())
-        image = CardRenderer().render(sample)
+        renderer = CardRenderer()
+        self.assertIsNotNone(renderer.glass_panel)
+        self.assertEqual(renderer.glass_panel.size, (CardRenderer.WIDTH * CardRenderer.SCALE, CardRenderer.HEIGHT * CardRenderer.SCALE))
+        image = renderer.render(sample)
         self.assertEqual(image.size, (CardRenderer.WIDTH, CardRenderer.HEIGHT))
+        self.assertEqual(image.getpixel((0, 0)), (1, 2, 3))
+        self.assertNotEqual(image.getpixel((CardRenderer.WIDTH // 2, CardRenderer.HEIGHT // 2)), (1, 2, 3))
         pixels = image.get_flattened_data() if hasattr(image, "get_flattened_data") else image.getdata()
         self.assertGreater(len(set(pixels)), 50)
 

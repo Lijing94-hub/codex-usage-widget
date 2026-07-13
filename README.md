@@ -44,7 +44,7 @@ It sits quietly on the desktop and keeps the account details that matter most la
 - Plan expiration from the local Codex login metadata
 - Estimated resets remaining before expiration, based on the current 7-day cycle
 
-The interface is intentionally compact and premium-feeling: dark acrylic glass, high-DPI rendering, rounded geometry, Codex branding, a color-coded quota bar, hover translucency, and a focused weekly-usage layout.
+The interface is intentionally compact and premium-feeling: an Image-2-generated graphite glass material plate, Liquid Glass-inspired controls, high-DPI dynamic typography, rounded geometry, Codex branding, a semantic quota bar, hover translucency, and a focused weekly-usage layout.
 
 If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
 
@@ -61,6 +61,7 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 ## Why It Feels Good
 
 - Beautiful vertical desktop widget that can live near the edge of your screen
+- Image-2 glass material integrated into the real renderer, not used as a static mockup
 - Real local Codex limit snapshots, not mocked counters
 - Big remaining-percentage typography for quick scanning
 - Local plan expiration and estimated resets remaining before expiration
@@ -79,6 +80,14 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 | Live quota | Hover glass | Reset-safe state | English UI |
 | --- | --- | --- | --- |
 | <img src="docs/screenshot.png" alt="Live quota view" width="180"> | <img src="docs/hover-screenshot.png" alt="Hover glass view" width="180"> | <img src="docs/waiting-screenshot.png" alt="Waiting for new Codex record view" width="180"> | <img src="docs/english-screenshot.png" alt="English UI view" width="180"> |
+
+<details>
+  <summary>Image-2 concept and production material</summary>
+  <br>
+  <img src="docs/design-concept-image2-liquid-mica.png" alt="Image-2 Liquid Glass and Mica concept study" width="320">
+  <img src="docs/image2-empty-glass-master.png" alt="Image-2 production glass material plate" width="182">
+  <p>The blank Image-2 material is loaded by the application itself; live quota data and controls are rendered above it at runtime.</p>
+</details>
 
 ## Privacy
 

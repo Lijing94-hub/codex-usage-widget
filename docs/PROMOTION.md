@@ -12,7 +12,7 @@ https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/Code
 
 我做了一个 Codex 桌面用量小组件：Codex Usage Widget。
 
-它可以直接在桌面显示 Codex 的 7D 用量、套餐到期时间和到期前剩余重置次数，支持 Windows / macOS，数据只读取本地 Codex 文件，不上传服务器。界面是暗色毛玻璃风格，支持悬停透明、自动刷新、手动刷新和系统语言适配。
+它可以直接在桌面显示 Codex 的 7D 用量、套餐到期时间和到期前剩余重置次数，支持 Windows / macOS，数据只读取本地 Codex 文件，不上传服务器。界面把 Image-2 生成的石墨玻璃材质真正集成进程序，并配合 Liquid Glass 控件，支持悬停透明、自动刷新、手动刷新和系统语言适配。
 
 如果你经常用 Codex，欢迎试试。觉得有用的话，帮我点个 GitHub Star 支持一下：
 
