@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import ctypes
 import datetime as dt
@@ -104,6 +105,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_updated": "Synced",
         "window_5h": "5H window",
         "window_7d": "7D window",
+        "plan_expires": "Plan ends",
+        "resets_left": "Resets left",
+        "weekly_cycle": "Based on 7D cycle",
+        "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
         "waiting_snapshot": "Waiting snapshot",
@@ -129,7 +134,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "footer_updated": "Updated {age}",
         "footer_cache": "Cached · {age}",
         "footer_waiting": "Waiting for Codex limit data",
-        "footer_usage_changed": "5H used {delta}% · just now",
+        "footer_usage_changed": "Used {delta}% · just now",
         "menu_refresh": "Refresh now",
         "menu_topmost": "Always on top / off",
         "menu_reset": "Reset to top right",
@@ -167,6 +172,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_updated": "已同步",
         "window_5h": "5 小时窗口",
         "window_7d": "1 周窗口",
+        "plan_expires": "套餐到期",
+        "resets_left": "剩余重置",
+        "weekly_cycle": "按 7D 周期计算",
+        "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
         "waiting_snapshot": "等待快照",
@@ -192,7 +201,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "footer_updated": "更新 {age}",
         "footer_cache": "缓存 · {age}",
         "footer_waiting": "等待 Codex 额度数据",
-        "footer_usage_changed": "5H 已用 {delta}% · 刚刚",
+        "footer_usage_changed": "已用 {delta}% · 刚刚",
         "menu_refresh": "立即刷新",
         "menu_topmost": "置顶 / 取消置顶",
         "menu_reset": "回到右上角",
@@ -337,6 +346,46 @@ def codex_home_from_config(config: dict[str, Any]) -> pathlib.Path:
     return pathlib.Path(os.environ.get("USERPROFILE") or str(pathlib.Path.home())) / ".codex"
 
 
+def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
+    metadata = {"plan_type": None, "plan_expires_at": None, "plan_checked_at": None}
+    auth = load_json(codex_home / "auth.json", {})
+    if not isinstance(auth, dict):
+        return metadata
+    tokens = auth.get("tokens")
+    token = tokens.get("id_token") if isinstance(tokens, dict) else None
+    if not isinstance(token, str):
+        return metadata
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return metadata
+        encoded = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded).decode("utf-8"))
+        account = payload.get("https://api.openai.com/auth")
+        if not isinstance(account, dict):
+            return metadata
+        metadata["plan_type"] = account.get("chatgpt_plan_type")
+        metadata["plan_expires_at"] = parse_event_timestamp(account.get("chatgpt_subscription_active_until"))
+        metadata["plan_checked_at"] = parse_event_timestamp(account.get("chatgpt_subscription_last_checked"))
+    except Exception as exc:
+        log_line(f"Failed to read local plan metadata: {exc}")
+    return metadata
+
+
+def resets_before_expiry(next_reset: Any, plan_expires_at: Any) -> int | None:
+    reset_ts = clean_float(next_reset)
+    expiry_ts = clean_float(plan_expires_at)
+    if reset_ts is None or expiry_ts is None:
+        return None
+    if reset_ts > 10_000_000_000:
+        reset_ts /= 1000
+    if expiry_ts > 10_000_000_000:
+        expiry_ts /= 1000
+    if reset_ts <= 0 or expiry_ts <= 0 or reset_ts > expiry_ts:
+        return 0
+    return 1 + int((expiry_ts - reset_ts) // (WEEKLY_MINUTES * 60))
+
+
 def now_ts() -> float:
     return time.time()
 
@@ -436,6 +485,9 @@ def empty_sample(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "source_path": None,
         "codex_home": str(codex_home_from_config(config)),
         "plan_type": None,
+        "plan_expires_at": None,
+        "plan_checked_at": None,
+        "resets_remaining": None,
         "limit_id": None,
         "rate_limit_reached_type": None,
         "windows": {
@@ -591,6 +643,10 @@ class CodexRateLimitReader:
 
     def read(self) -> dict[str, Any]:
         sample = empty_sample(self.config)
+        plan = read_local_plan_metadata(self.codex_home)
+        sample["plan_type"] = plan.get("plan_type")
+        sample["plan_expires_at"] = plan.get("plan_expires_at")
+        sample["plan_checked_at"] = plan.get("plan_checked_at")
         latest = self._find_latest_rate_limits()
         if latest is None:
             sample["errors"].append(tr("note_no_snapshot"))
@@ -604,7 +660,10 @@ class CodexRateLimitReader:
         sample["source_state"] = "live" if sample["ok"] else "unavailable"
         sample["source_event_at"] = latest.get("timestamp")
         sample["source_path"] = str(latest.get("path"))
-        sample["plan_type"] = raw.get("plan_type")
+        sample["plan_type"] = raw.get("plan_type") or sample.get("plan_type")
+        sample["resets_remaining"] = resets_before_expiry(
+            windows.get("weekly", {}).get("reset_at"), sample.get("plan_expires_at")
+        )
         sample["limit_id"] = raw.get("limit_id")
         sample["rate_limit_reached_type"] = raw.get("rate_limit_reached_type")
         stale_count = sum(1 for item in windows.values() if item.get("available") and item.get("stale"))
@@ -964,8 +1023,8 @@ class CardRenderer:
         draw = ImageDraw.Draw(image)
 
         self._draw_header(image, draw, sample)
-        self._draw_primary_limit(draw, sample)
         self._draw_week_limit(draw, sample)
+        self._draw_account_info(draw, sample)
         self._draw_footer(draw, sample)
 
         rendered = image.convert("RGB").resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
@@ -1203,9 +1262,9 @@ class CardRenderer:
     def _draw_week_limit(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         window = (sample.get("windows") or {}).get("weekly") or empty_window()
         color, ratio, available, stale = self._window_style(window)
-        x1, y1, x2, y2 = 18, 336, 286, 482
-        self._draw_soft_shadow(draw, x1, y1, x2, y2, 22)
-        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(22), fill="#101A29")
+        x1, y1, x2, y2 = 18, 118, 286, 330
+        self._draw_soft_shadow(draw, x1, y1, x2, y2, 24)
+        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(24), fill="#101A29")
 
         draw.text(self.xy(x1 + 22, y1 + 22), "7D", font=self._font(20, True), fill="#F8FAFC")
         used_text = self._used_label(window, stale, "--")
@@ -1215,18 +1274,47 @@ class CardRenderer:
         draw.text(self.xy(x2 - used_width / 2 - 18, y1 + 33), used_text, font=used_font, fill="#FDBA74", anchor="mm")
 
         main = self._remaining_label(window, stale)
-        main_font = self._font(40 if not stale else 26, True)
-        draw.text(self.xy(x1 + 22, y1 + 62), main, font=main_font, fill=color)
+        main_font = self._font(72 if not stale else 34, True)
+        draw.text(self.xy(x1 + 22, y1 + 68), main, font=main_font, fill=color)
 
         reset = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
         if stale:
             reset = tr("stale_snapshot")
         elif available:
             reset = f"{reset}{tr('reset')}"
-        reset = fit_text(draw, reset, self._font(12, True), self.sc(128))
-        draw.text(self.xy(x1 + 136, y1 + 78), reset, font=self._font(12, True), fill="#94A3B8")
+        reset = fit_text(draw, reset, self._font(12, True), self.sc(224))
+        draw.text(self.xy(x1 + 24, y1 + 148), reset, font=self._font(12, True), fill="#94A3B8")
 
-        self._draw_progress(draw, x1 + 22, y2 - 30, x2 - 22, y2 - 16, ratio, color, available and not stale)
+        self._draw_progress(draw, x1 + 22, y2 - 34, x2 - 22, y2 - 18, ratio, color, available and not stale)
+
+    def _draw_account_info(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
+        plan = str(sample.get("plan_type") or "Codex").upper()
+        expires_at = clean_float(sample.get("plan_expires_at"))
+        resets = clean_int(sample.get("resets_remaining"), 0)
+
+        if expires_at:
+            expires = dt.datetime.fromtimestamp(expires_at).astimezone()
+            expiry_value = expires.strftime("%m/%d")
+            expiry_note = f"{expires.strftime('%H:%M')} · {plan}"
+        else:
+            expiry_value = "--/--"
+            expiry_note = plan
+
+        reset_value = tr("times_left", value=resets) if resets is not None else "--"
+        tiles = (
+            ((18, 344, 148, 470), tr("plan_expires"), expiry_value, expiry_note, "#60A5FA"),
+            ((156, 344, 286, 470), tr("resets_left"), reset_value, tr("weekly_cycle"), "#4ADE80"),
+        )
+        for box, label, value, note, accent in tiles:
+            x1, y1, x2, y2 = box
+            self._draw_soft_shadow(draw, x1, y1, x2, y2, 18)
+            draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(18), fill="#101A29")
+            draw.rounded_rectangle(self.xy(x1 + 16, y1 + 17, x1 + 20, y1 + 35), radius=self.sc(2), fill=accent)
+            draw.text(self.xy(x1 + 30, y1 + 18), label, font=self._font(10, True), fill="#94A3B8")
+            value = fit_text(draw, value, self._font(27, True), self.sc(98), suffix="")
+            draw.text(self.xy(x1 + 16, y1 + 50), value, font=self._font(27, True), fill="#F8FAFC")
+            note = fit_text(draw, note, self._font(10, True), self.sc(98), suffix="")
+            draw.text(self.xy(x1 + 16, y2 - 27), note, font=self._font(10, True), fill="#64748B")
 
     def _draw_progress(self, draw: ImageDraw.ImageDraw, x1: int, y1: int, x2: int, y2: int, ratio: float, color: str, active: bool) -> None:
         radius = self.sc((y2 - y1) / 2)
@@ -1337,13 +1425,8 @@ class CardRenderer:
         if sample.get("source_state") == "cache":
             footer = tr("footer_cache", age=format_age(source_event))
         footer_font = self._font(12, True)
-        footer = fit_text(draw, footer, footer_font, self.sc(178))
-        draw.text(self.xy(22, 502), footer, font=footer_font, fill="#94A3B8", anchor="lm")
-
-        plan = str(sample.get("plan_type") or "Codex").upper()
-        plan = fit_text(draw, plan, self._font(12, True), self.sc(62), suffix="")
-        draw.rounded_rectangle(self.xy(212, 490, 282, 514), radius=self.sc(10), fill="#172437")
-        draw.text(self.xy(247, 502), plan, font=self._font(11, True), fill="#CBD5E1", anchor="mm")
+        footer = fit_text(draw, footer, footer_font, self.sc(260))
+        draw.text(self.xy(152, 502), footer, font=footer_font, fill="#94A3B8", anchor="mm")
 
 
 class UsageWidget:
@@ -1544,7 +1627,7 @@ class UsageWidget:
             current["used_delta"] = delta
             updated_windows[key] = current
             changed = True
-            if key == "five_hour":
+            if key == "weekly":
                 sample["primary_delta"] = delta
         if changed:
             sample["windows"] = updated_windows
@@ -1989,6 +2072,28 @@ class ReaderTests(unittest.TestCase):
         self.assertTrue(windows["five_hour"]["not_offered"])
         self.assertTrue(windows["weekly"]["available"])
         self.assertEqual(windows["weekly"]["remaining_percent"], 99.0)
+
+    def test_reads_plan_expiry_without_persisting_token(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td) / ".codex"
+            home.mkdir(parents=True)
+            account = {
+                "chatgpt_plan_type": "plus",
+                "chatgpt_subscription_active_until": "2026-07-24T09:15:15+00:00",
+                "chatgpt_subscription_last_checked": "2026-07-13T00:00:00+00:00",
+            }
+            payload = {"https://api.openai.com/auth": account}
+            encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+            atomic_write_json(home / "auth.json", {"tokens": {"id_token": f"header.{encoded}.signature"}})
+            metadata = read_local_plan_metadata(home)
+            self.assertEqual(metadata["plan_type"], "plus")
+            self.assertEqual(metadata["plan_expires_at"], parse_event_timestamp(account["chatgpt_subscription_active_until"]))
+            self.assertNotIn("id_token", metadata)
+
+    def test_counts_weekly_resets_before_plan_expiry(self) -> None:
+        next_reset = 1_800_000_000
+        self.assertEqual(resets_before_expiry(next_reset, next_reset + 15 * 24 * 3600), 3)
+        self.assertEqual(resets_before_expiry(next_reset, next_reset - 1), 0)
 
     def test_marks_expired_window_stale_without_hiding_value(self) -> None:
         with tempfile.TemporaryDirectory() as td:

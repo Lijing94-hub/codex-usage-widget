@@ -19,8 +19,9 @@ The first launch creates a local `.venv` folder and installs Pillow. Later launc
 
 The widget reads local files under `~/.codex` and displays:
 
-- 5-hour remaining quota
 - 7-day remaining quota
+- Plan expiration
+- Estimated resets remaining before expiration
 
 It does not upload data and does not display conversation content.
 

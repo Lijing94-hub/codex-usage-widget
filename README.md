@@ -13,7 +13,7 @@
 <p align="center">
   <strong>A polished desktop widget for checking your local Codex usage limits at a glance.</strong>
   <br>
-  <strong>一个用于查看 Codex 5H / 7D 用量的精致桌面小组件。</strong>
+  <strong>一个用于查看 Codex 7D 用量、套餐到期和剩余重置次数的精致桌面小组件。</strong>
 </p>
 
 <p align="center">
@@ -36,14 +36,15 @@
 
 Codex Usage Widget is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
 
-中文用户可以把它当成一个常驻桌面的 Codex 额度看板：不用打开网页，不用翻日志，直接看 5H 和 7D 剩余用量。
+中文用户可以把它当成一个常驻桌面的 Codex 额度看板：不用打开网页，不用翻日志，直接看 7D 剩余用量、套餐到期时间和到期前剩余重置次数。
 
-It sits quietly on the desktop, shows the two limits that matter most, and makes the important numbers large enough to read at a glance:
+It sits quietly on the desktop and keeps the account details that matter most large enough to read at a glance:
 
-- `5H`: the short-window Codex quota
 - `7D`: the weekly Codex quota
+- Plan expiration from the local Codex login metadata
+- Estimated resets remaining before expiration, based on the current 7-day cycle
 
-The interface is intentionally compact and premium-feeling: dark acrylic glass, high-DPI rendering, rounded geometry, Codex branding, color-coded quota bars, hover translucency, and a layout that stays useful even when one window has reset and is waiting for a fresh Codex record.
+The interface is intentionally compact and premium-feeling: dark acrylic glass, high-DPI rendering, rounded geometry, Codex branding, a color-coded quota bar, hover translucency, and a focused weekly-usage layout.
 
 If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
 
@@ -62,6 +63,7 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 - Beautiful vertical desktop widget that can live near the edge of your screen
 - Real local Codex limit snapshots, not mocked counters
 - Big remaining-percentage typography for quick scanning
+- Local plan expiration and estimated resets remaining before expiration
 - Green remaining segment and orange used segment for instant visual understanding
 - Hover glass mode, so you can inspect content underneath without fully hiding quota data
 - Manual refresh, auto refresh, always-on-top mode, and drag-to-position
@@ -82,7 +84,7 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 
 This widget only reads local Codex files under your own `~/.codex` directory.
 
-It does not upload data, does not call a server, and does not read or display your conversation content. The UI only uses local rate-limit snapshots such as remaining percentage, used percentage, reset time, and plan label.
+It does not upload data, does not call a server, and does not read or display your conversation content. The UI only uses local rate-limit snapshots plus the plan type and subscription expiration already stored in the local Codex login metadata. Tokens are never displayed or copied into the widget cache.
 
 ## Windows Quick Start
 
