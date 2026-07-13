@@ -107,6 +107,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "used": "Used",
         "waiting": "Waiting",
         "waiting_snapshot": "Waiting snapshot",
+        "not_applicable": "N/A",
+        "model_no_5h": "No 5H window for current model",
         "reset_done": "Reset",
         "stale_snapshot": "Waiting for new Codex record",
         "reset": " reset",
@@ -168,6 +170,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "used": "已用",
         "waiting": "等待",
         "waiting_snapshot": "等待快照",
+        "not_applicable": "不适用",
+        "model_no_5h": "当前模型无 5H 窗口",
         "reset_done": "已重置",
         "stale_snapshot": "等待 Codex 新记录",
         "reset": "重置",
@@ -416,6 +420,7 @@ def empty_window() -> dict[str, Any]:
         "reset_at": None,
         "window_minutes": None,
         "stale": False,
+        "not_offered": False,
     }
 
 
@@ -559,6 +564,8 @@ def normalize_rate_limits(raw: dict[str, Any], now: float | None = None) -> dict
             if normalized:
                 normalized["window_minutes"] = normalized["window_minutes"] or FIVE_HOUR_MINUTES
                 windows["five_hour"] = normalized
+        elif primary_minutes == WEEKLY_MINUTES:
+            windows["five_hour"]["not_offered"] = True
     if not windows["weekly"]["available"]:
         secondary = raw.get("secondary") or raw.get("secondary_window")
         secondary_minutes = window_minutes_from(secondary) if isinstance(secondary, dict) else None
@@ -1173,7 +1180,8 @@ class CardRenderer:
 
         draw.text(self.xy(x1 + 22, y1 + 22), "5H", font=self._font(20, True), fill="#F8FAFC")
 
-        used_text = self._used_label(window, stale, tr("waiting"))
+        not_offered = bool(window.get("not_offered"))
+        used_text = self._used_label(window, stale, tr("not_applicable") if not_offered else tr("waiting"))
         used_font = self._font(10, True)
         used_width = min(126, max(84, int(text_width(draw, used_text, used_font) / self.SCALE) + 22))
         draw.rounded_rectangle(self.xy(x2 - used_width - 18, y1 + 21, x2 - 18, y1 + 49), radius=self.sc(11), fill="#2A1F19")
@@ -1183,8 +1191,11 @@ class CardRenderer:
         main_font = self._font(72 if not stale else 40, True)
         draw.text(self.xy(x1 + 22, y1 + 70), main, font=main_font, fill=color)
 
-        reset = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
-        reset = tr("stale_snapshot") if stale else f"{reset}{tr('reset')}"
+        reset = self._compact_relative(window.get("reset_at")) if available else tr("model_no_5h") if not_offered else tr("waiting_snapshot")
+        if stale:
+            reset = tr("stale_snapshot")
+        elif available:
+            reset = f"{reset}{tr('reset')}"
         draw.text(self.xy(x1 + 24, y1 + 58), reset, font=self._font(13, True), fill="#CBD5E1")
 
         self._draw_progress(draw, x1 + 22, y2 - 34, x2 - 22, y2 - 18, ratio, color, available and not stale)
@@ -1208,7 +1219,10 @@ class CardRenderer:
         draw.text(self.xy(x1 + 22, y1 + 62), main, font=main_font, fill=color)
 
         reset = self._compact_relative(window.get("reset_at")) if available else tr("waiting_snapshot")
-        reset = tr("stale_snapshot") if stale else f"{reset}{tr('reset')}"
+        if stale:
+            reset = tr("stale_snapshot")
+        elif available:
+            reset = f"{reset}{tr('reset')}"
         reset = fit_text(draw, reset, self._font(12, True), self.sc(128))
         draw.text(self.xy(x1 + 136, y1 + 78), reset, font=self._font(12, True), fill="#94A3B8")
 
@@ -1259,7 +1273,8 @@ class CardRenderer:
         small_font = self._font(13 if primary else 12)
         draw.text(self.xy(x1 + 22, y1 + 20), tr("window_5h" if key == "five_hour" else "window_7d"), font=label_font, fill="#0F172A")
 
-        used_text = f"{tr('used')} {percent_text(used)}" if available else tr("status_waiting")
+        not_offered = bool(window.get("not_offered"))
+        used_text = f"{tr('used')} {percent_text(used)}" if available else tr("not_applicable") if not_offered else tr("status_waiting")
         used_w = text_width(draw, used_text, self._font(11, True)) / self.SCALE + 24
         draw.rounded_rectangle(self.xy(x2 - used_w - 20, y1 + 18, x2 - 20, y1 + 43), radius=self.sc(12), fill=self._soft_color(accent))
         draw.text(self.xy(x2 - used_w - 8, y1 + 24), used_text, font=self._font(11, True), fill="#334155")
@@ -1272,7 +1287,7 @@ class CardRenderer:
         else:
             main = percent_text(remaining) if available else "--%"
             main_font = self._font(58 if primary else 42, True)
-            reset_line = f"{self._compact_relative(window.get('reset_at'))}{tr('reset')}" if available else tr("waiting_snapshot")
+            reset_line = f"{self._compact_relative(window.get('reset_at'))}{tr('reset')}" if available else tr("model_no_5h") if not_offered else tr("waiting_snapshot")
             helper_line = ""
 
         reset_line = fit_text(draw, reset_line, small_font, self.sc((x2 - x1) - 44))
@@ -1971,6 +1986,7 @@ class ReaderTests(unittest.TestCase):
             }
         )
         self.assertFalse(windows["five_hour"]["available"])
+        self.assertTrue(windows["five_hour"]["not_offered"])
         self.assertTrue(windows["weekly"]["available"])
         self.assertEqual(windows["weekly"]["remaining_percent"], 99.0)
 
