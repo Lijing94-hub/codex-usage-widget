@@ -553,14 +553,16 @@ def normalize_rate_limits(raw: dict[str, Any], now: float | None = None) -> dict
 
     if not windows["five_hour"]["available"]:
         primary = raw.get("primary") or raw.get("primary_window")
-        if isinstance(primary, dict):
+        primary_minutes = window_minutes_from(primary) if isinstance(primary, dict) else None
+        if isinstance(primary, dict) and primary_minutes in (None, FIVE_HOUR_MINUTES):
             normalized = normalize_window(primary, tr("window_5h"), now=now)
             if normalized:
                 normalized["window_minutes"] = normalized["window_minutes"] or FIVE_HOUR_MINUTES
                 windows["five_hour"] = normalized
     if not windows["weekly"]["available"]:
         secondary = raw.get("secondary") or raw.get("secondary_window")
-        if isinstance(secondary, dict):
+        secondary_minutes = window_minutes_from(secondary) if isinstance(secondary, dict) else None
+        if isinstance(secondary, dict) and secondary_minutes in (None, WEEKLY_MINUTES):
             normalized = normalize_window(secondary, tr("window_7d"), now=now)
             if normalized:
                 normalized["window_minutes"] = normalized["window_minutes"] or WEEKLY_MINUTES
@@ -1956,6 +1958,21 @@ class ReaderTests(unittest.TestCase):
             sample = CodexRateLimitReader({"codex_home": str(home)}).read()
             self.assertEqual(sample["windows"]["five_hour"]["remaining_percent"], 75.0)
             self.assertEqual(sample["windows"]["weekly"]["remaining_percent"], 95.0)
+
+    def test_does_not_treat_weekly_only_primary_as_five_hour(self) -> None:
+        windows = normalize_rate_limits(
+            {
+                "primary": {
+                    "used_percent": 1,
+                    "window_minutes": WEEKLY_MINUTES,
+                    "resets_at": int(now_ts()) + WEEKLY_MINUTES * 60,
+                },
+                "secondary": None,
+            }
+        )
+        self.assertFalse(windows["five_hour"]["available"])
+        self.assertTrue(windows["weekly"]["available"])
+        self.assertEqual(windows["weekly"]["remaining_percent"], 99.0)
 
     def test_marks_expired_window_stale_without_hiding_value(self) -> None:
         with tempfile.TemporaryDirectory() as td:
