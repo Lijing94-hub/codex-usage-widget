@@ -108,8 +108,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "window_7d": "7D window",
         "remaining": "Remaining",
         "plan_expires": "Plan ends",
-        "resets_left": "Resets left",
-        "weekly_cycle": "Based on 7D cycle",
+        "resets_left": "Cycles left",
+        "weekly_cycle": "Includes current 7D",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -176,8 +176,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "window_7d": "1 周窗口",
         "remaining": "剩余",
         "plan_expires": "套餐到期",
-        "resets_left": "剩余重置",
-        "weekly_cycle": "按 7D 周期计算",
+        "resets_left": "剩余次数",
+        "weekly_cycle": "含当前 7D 周期",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -375,7 +375,11 @@ def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
     return metadata
 
 
-def resets_before_expiry(next_reset: Any, plan_expires_at: Any) -> int | None:
+def usage_cycles_before_expiry(
+    next_reset: Any,
+    plan_expires_at: Any,
+    now: Any = None,
+) -> int | None:
     reset_ts = clean_float(next_reset)
     expiry_ts = clean_float(plan_expires_at)
     if reset_ts is None or expiry_ts is None:
@@ -384,9 +388,21 @@ def resets_before_expiry(next_reset: Any, plan_expires_at: Any) -> int | None:
         reset_ts /= 1000
     if expiry_ts > 10_000_000_000:
         expiry_ts /= 1000
-    if reset_ts <= 0 or expiry_ts <= 0 or reset_ts > expiry_ts:
+    current_ts = now_ts() if now is None else clean_float(now)
+    if current_ts is None:
+        current_ts = now_ts()
+    if current_ts > 10_000_000_000:
+        current_ts /= 1000
+    if reset_ts <= 0 or expiry_ts <= current_ts:
         return 0
-    return 1 + int((expiry_ts - reset_ts) // (WEEKLY_MINUTES * 60))
+
+    cycle_seconds = WEEKLY_MINUTES * 60
+    if reset_ts <= current_ts:
+        elapsed_cycles = math.floor((current_ts - reset_ts) / cycle_seconds) + 1
+        reset_ts += elapsed_cycles * cycle_seconds
+
+    future_resets = math.ceil((expiry_ts - reset_ts) / cycle_seconds) if reset_ts < expiry_ts else 0
+    return 1 + future_resets
 
 
 def now_ts() -> float:
@@ -664,8 +680,10 @@ class CodexRateLimitReader:
         sample["source_event_at"] = latest.get("timestamp")
         sample["source_path"] = str(latest.get("path"))
         sample["plan_type"] = raw.get("plan_type") or sample.get("plan_type")
-        sample["resets_remaining"] = resets_before_expiry(
-            windows.get("weekly", {}).get("reset_at"), sample.get("plan_expires_at")
+        sample["resets_remaining"] = usage_cycles_before_expiry(
+            windows.get("weekly", {}).get("reset_at"),
+            sample.get("plan_expires_at"),
+            now=sample.get("snapshot_at"),
         )
         sample["limit_id"] = raw.get("limit_id")
         sample["rate_limit_reached_type"] = raw.get("rate_limit_reached_type")
@@ -2291,10 +2309,13 @@ class ReaderTests(unittest.TestCase):
             self.assertEqual(metadata["plan_expires_at"], parse_event_timestamp(account["chatgpt_subscription_active_until"]))
             self.assertNotIn("id_token", metadata)
 
-    def test_counts_weekly_resets_before_plan_expiry(self) -> None:
-        next_reset = 1_800_000_000
-        self.assertEqual(resets_before_expiry(next_reset, next_reset + 15 * 24 * 3600), 3)
-        self.assertEqual(resets_before_expiry(next_reset, next_reset - 1), 0)
+    def test_counts_current_and_future_weekly_cycles_before_plan_expiry(self) -> None:
+        now = parse_event_timestamp("2026-07-14T08:47:34+08:00")
+        next_reset = parse_event_timestamp("2026-07-20T05:27:15+08:00")
+        plan_expires = parse_event_timestamp("2026-07-24T17:15:15+08:00")
+        self.assertEqual(usage_cycles_before_expiry(next_reset, plan_expires, now=now), 2)
+        self.assertEqual(usage_cycles_before_expiry(next_reset, next_reset - 1, now=now), 1)
+        self.assertEqual(usage_cycles_before_expiry(next_reset, now - 1, now=now), 0)
 
     def test_marks_expired_window_stale_without_hiding_value(self) -> None:
         with tempfile.TemporaryDirectory() as td:
