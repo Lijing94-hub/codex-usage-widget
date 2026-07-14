@@ -1471,18 +1471,14 @@ class CardRenderer:
         reset_font = self._font(13, True)
         combined_reset = fit_text(draw, f"{reset_core}{reset_suffix}", reset_font, self.sc(240))
         if combined_reset == f"{reset_core}{reset_suffix}" and reset_suffix:
-            draw.text(self.xy(x1, 282), reset_core, font=reset_font, fill="#69B8F7")
+            draw.text(self.xy(x1, 284), reset_core, font=reset_font, fill="#69B8F7")
             reset_x = x1 + text_width(draw, reset_core, reset_font) / self.SCALE
-            draw.text(self.xy(reset_x, 282), reset_suffix, font=reset_font, fill="#A0AAB5")
+            draw.text(self.xy(reset_x, 284), reset_suffix, font=reset_font, fill="#A0AAB5")
         else:
-            draw.text(self.xy(x1, 282), combined_reset, font=reset_font, fill="#8FC9FF" if available and not stale else "#8B98A6")
+            draw.text(self.xy(x1, 284), combined_reset, font=reset_font, fill="#8FC9FF" if available and not stale else "#8B98A6")
 
-        self._draw_progress(draw, x1, 310, x2, 324, ratio, color, available and not stale)
-        remaining_text = f"{tr('remaining')} {percent_text(window.get('remaining_percent'))}" if available else tr("waiting")
-        used_summary = f"{tr('used')} {percent_text(window.get('used_percent'))}" if available else "--"
-        draw.text(self.xy(x1, 335), remaining_text, font=self._font(10, True), fill=color)
-        draw.text(self.xy(x2, 335), used_summary, font=self._font(10, True), fill="#FF8B62", anchor="ra")
-        draw.line(self.xy(x1, 369, x2, 369), fill="#3B444C", width=self.sc(1))
+        self._draw_progress(draw, x1, 315, x2, 329, ratio, color, available and not stale)
+        draw.line(self.xy(x1, 355, x2, 355), fill="#3B444C", width=self.sc(1))
 
     def _draw_account_info(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         plan = str(sample.get("plan_type") or "Codex").upper()
@@ -1498,23 +1494,23 @@ class CardRenderer:
             expiry_note = plan
 
         reset_value = tr("times_left", value=resets) if resets is not None else "--"
-        draw.line(self.xy(158, 388, 158, 478), fill="#3B444C", width=self.sc(1))
+        draw.line(self.xy(158, 376, 158, 472), fill="#3B444C", width=self.sc(1))
         columns = (
             (40, 148, 47, tr("plan_expires"), expiry_value, expiry_note, "calendar"),
             (188, 280, 195, tr("resets_left"), reset_value, tr("weekly_cycle"), "cycle"),
         )
         for x1, x2, icon_x, label, value, note, icon in columns:
-            icon_y = 393
+            icon_y = 383
             if icon == "calendar":
                 self._draw_clock_icon(draw, icon_x, icon_y, "#69B9F5")
             else:
                 self._draw_refresh_icon(draw, icon_x, icon_y, "#69DE91")
-            draw.text(self.xy(x1, 405), label, font=self._font(11, True), fill="#919CA8")
+            draw.text(self.xy(x1, 398), label, font=self._font(11, True), fill="#919CA8")
             value_font = self._font(34, True) if any(ord(char) > 127 for char in value) else self._display_font(34, True)
             value = fit_text(draw, value, value_font, self.sc(x2 - x1), suffix="")
-            draw.text(self.xy(x1, 423), value, font=value_font, fill="#F8FAFC")
+            draw.text(self.xy(x1, 418), value, font=value_font, fill="#F8FAFC")
             note = fit_text(draw, note, self._font(10, True), self.sc(x2 - x1), suffix="")
-            draw.text(self.xy(x1, 465), note, font=self._font(10, True), fill="#748291")
+            draw.text(self.xy(x1, 459), note, font=self._font(10, True), fill="#748291")
 
     def _draw_progress(self, draw: ImageDraw.ImageDraw, x1: int, y1: int, x2: int, y2: int, ratio: float, color: str, active: bool) -> None:
         radius = self.sc((y2 - y1) / 2)

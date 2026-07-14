@@ -46,7 +46,8 @@ https://github.com/Lijing94-hub/codex-usage-widget
 
 ## 去哪里发
 
-- 朋友圈或微信技术群：用短中文版本，配 `docs/social-preview.png`
+- 朋友圈：配竖版 Image-2 海报 `docs/moments-poster.png`
+- 微信技术群：用短中文版本，配 `docs/social-preview.png`
 - 同事或朋友：用 Friend Message，语气更自然
 - V2EX / 即刻 / 掘金 / 小红书：重点说“本地读取、不上传数据、直接看 7D 与套餐周期”
 - GitHub Profile README：把项目放到 pinned repositories

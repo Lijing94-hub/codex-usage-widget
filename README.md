@@ -44,7 +44,7 @@ It sits quietly on the desktop and keeps the account details that matter most la
 - Plan expiration from the local Codex login metadata
 - Estimated resets remaining before expiration, based on the current 7-day cycle
 
-The interface is intentionally compact and premium-feeling: an Image-2-generated graphite glass material plate, Liquid Glass-inspired controls, high-DPI dynamic typography, rounded geometry, Codex branding, a semantic quota bar, hover translucency, and a focused weekly-usage layout.
+The interface is intentionally compact and premium-feeling: a smooth Image-2-generated graphite glass material plate, Liquid Glass-inspired controls, high-DPI dynamic typography, rounded geometry, Codex branding, a semantic quota bar without duplicate labels, hover translucency, and a focused weekly-usage layout.
 
 If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
 
@@ -61,7 +61,7 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 ## Why It Feels Good
 
 - Beautiful vertical desktop widget that can live near the edge of your screen
-- Image-2 glass material integrated into the real renderer, not used as a static mockup
+- Smooth Image-2 glass material integrated into the real renderer, not used as a static mockup
 - Real local Codex limit snapshots, not mocked counters
 - Big remaining-percentage typography for quick scanning
 - Local plan expiration and estimated resets remaining before expiration
