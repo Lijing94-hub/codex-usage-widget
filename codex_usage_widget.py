@@ -108,8 +108,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "window_7d": "7D window",
         "remaining": "Remaining",
         "plan_expires": "Plan ends",
-        "resets_left": "Cycles left",
-        "weekly_cycle": "Includes current 7D",
+        "resets_left": "Resets left",
+        "weekly_cycle": "Future resets only",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -176,8 +176,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "window_7d": "1 周窗口",
         "remaining": "剩余",
         "plan_expires": "套餐到期",
-        "resets_left": "剩余次数",
-        "weekly_cycle": "含当前 7D 周期",
+        "resets_left": "剩余重置",
+        "weekly_cycle": "仅含后续重置",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -375,7 +375,7 @@ def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
     return metadata
 
 
-def usage_cycles_before_expiry(
+def resets_before_expiry(
     next_reset: Any,
     plan_expires_at: Any,
     now: Any = None,
@@ -401,8 +401,7 @@ def usage_cycles_before_expiry(
         elapsed_cycles = math.floor((current_ts - reset_ts) / cycle_seconds) + 1
         reset_ts += elapsed_cycles * cycle_seconds
 
-    future_resets = math.ceil((expiry_ts - reset_ts) / cycle_seconds) if reset_ts < expiry_ts else 0
-    return 1 + future_resets
+    return math.ceil((expiry_ts - reset_ts) / cycle_seconds) if reset_ts < expiry_ts else 0
 
 
 def now_ts() -> float:
@@ -680,7 +679,7 @@ class CodexRateLimitReader:
         sample["source_event_at"] = latest.get("timestamp")
         sample["source_path"] = str(latest.get("path"))
         sample["plan_type"] = raw.get("plan_type") or sample.get("plan_type")
-        sample["resets_remaining"] = usage_cycles_before_expiry(
+        sample["resets_remaining"] = resets_before_expiry(
             windows.get("weekly", {}).get("reset_at"),
             sample.get("plan_expires_at"),
             now=sample.get("snapshot_at"),
@@ -2309,13 +2308,13 @@ class ReaderTests(unittest.TestCase):
             self.assertEqual(metadata["plan_expires_at"], parse_event_timestamp(account["chatgpt_subscription_active_until"]))
             self.assertNotIn("id_token", metadata)
 
-    def test_counts_current_and_future_weekly_cycles_before_plan_expiry(self) -> None:
+    def test_counts_only_future_weekly_resets_before_plan_expiry(self) -> None:
         now = parse_event_timestamp("2026-07-14T08:47:34+08:00")
-        next_reset = parse_event_timestamp("2026-07-20T05:27:15+08:00")
+        next_reset = parse_event_timestamp("2026-07-21T09:12:05+08:00")
         plan_expires = parse_event_timestamp("2026-07-24T17:15:15+08:00")
-        self.assertEqual(usage_cycles_before_expiry(next_reset, plan_expires, now=now), 2)
-        self.assertEqual(usage_cycles_before_expiry(next_reset, next_reset - 1, now=now), 1)
-        self.assertEqual(usage_cycles_before_expiry(next_reset, now - 1, now=now), 0)
+        self.assertEqual(resets_before_expiry(next_reset, plan_expires, now=now), 1)
+        self.assertEqual(resets_before_expiry(next_reset, next_reset - 1, now=now), 0)
+        self.assertEqual(resets_before_expiry(next_reset, now - 1, now=now), 0)
 
     def test_marks_expired_window_stale_without_hiding_value(self) -> None:
         with tempfile.TemporaryDirectory() as td:
