@@ -29,9 +29,10 @@ except Exception:  # pragma: no cover - reported by run_app()
     messagebox = None
 
 try:
-    from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageTk
 except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
     Image = None
+    ImageChops = None
     ImageDraw = None
     ImageFilter = None
     ImageFont = None
@@ -110,6 +111,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "plan_expires": "Plan ends",
         "resets_left": "Resets left",
         "weekly_cycle": "Future resets only",
+        "codex_credits": "From Codex credits",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -178,6 +180,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "plan_expires": "套餐到期",
         "resets_left": "剩余重置",
         "weekly_cycle": "仅含后续重置",
+        "codex_credits": "来自 Codex 额度",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -404,6 +407,16 @@ def resets_before_expiry(
     return math.ceil((expiry_ts - reset_ts) / cycle_seconds) if reset_ts < expiry_ts else 0
 
 
+def resets_from_credits(raw: dict[str, Any]) -> int | None:
+    credits = raw.get("credits")
+    if not isinstance(credits, dict) or credits.get("unlimited") is True:
+        return None
+    balance = clean_int(credits.get("balance"), minimum=0)
+    if balance is not None:
+        return balance
+    return 0 if credits.get("has_credits") is False else None
+
+
 def now_ts() -> float:
     return time.time()
 
@@ -506,6 +519,7 @@ def empty_sample(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "plan_expires_at": None,
         "plan_checked_at": None,
         "resets_remaining": None,
+        "resets_source": None,
         "limit_id": None,
         "rate_limit_reached_type": None,
         "windows": {
@@ -679,11 +693,17 @@ class CodexRateLimitReader:
         sample["source_event_at"] = latest.get("timestamp")
         sample["source_path"] = str(latest.get("path"))
         sample["plan_type"] = raw.get("plan_type") or sample.get("plan_type")
-        sample["resets_remaining"] = resets_before_expiry(
-            windows.get("weekly", {}).get("reset_at"),
-            sample.get("plan_expires_at"),
-            now=sample.get("snapshot_at"),
-        )
+        credit_resets = resets_from_credits(raw)
+        if credit_resets is not None:
+            sample["resets_remaining"] = credit_resets
+            sample["resets_source"] = "credits"
+        else:
+            sample["resets_remaining"] = resets_before_expiry(
+                windows.get("weekly", {}).get("reset_at"),
+                sample.get("plan_expires_at"),
+                now=sample.get("snapshot_at"),
+            )
+            sample["resets_source"] = "estimate" if sample["resets_remaining"] is not None else None
         sample["limit_id"] = raw.get("limit_id")
         sample["rate_limit_reached_type"] = raw.get("rate_limit_reached_type")
         stale_count = sum(1 for item in windows.values() if item.get("available") and item.get("stale"))
@@ -888,13 +908,30 @@ def rgba_to_abgr(red: int, green: int, blue: int, alpha: int) -> int:
     return ((alpha & 0xFF) << 24) | ((blue & 0xFF) << 16) | ((green & 0xFF) << 8) | (red & 0xFF)
 
 
+def windows_toplevel_handle(root: tk.Tk) -> int | None:
+    if sys.platform != "win32":
+        return None
+    try:
+        root.update_idletasks()
+        hwnd = int(root.winfo_id())
+        user32 = ctypes.windll.user32
+        user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        user32.GetAncestor.restype = ctypes.c_void_p
+        top_hwnd = user32.GetAncestor(ctypes.c_void_p(hwnd), 2)  # GA_ROOT
+        return int(top_hwnd or hwnd)
+    except Exception:
+        return None
+
+
 def apply_windows_glass(root: tk.Tk) -> bool:
     if sys.platform != "win32":
         return False
     applied = False
     try:
         root.update_idletasks()
-        hwnd = root.winfo_id()
+        hwnd = windows_toplevel_handle(root)
+        if hwnd is None:
+            return False
     except Exception:
         return False
 
@@ -921,12 +958,40 @@ def apply_windows_glass(root: tk.Tk) -> bool:
     return applied
 
 
+def apply_windows_native_corners(root: tk.Tk) -> bool:
+    if sys.platform != "win32":
+        return False
+    hwnd = windows_toplevel_handle(root)
+    if hwnd is None:
+        return False
+    rounded = False
+    with contextlib.suppress(Exception):
+        value = ctypes.c_int(2)  # DWMWCP_ROUND
+        result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            ctypes.c_void_p(hwnd), 33, ctypes.byref(value), ctypes.sizeof(value)
+        )
+        rounded = result == 0
+    with contextlib.suppress(Exception):
+        border = ctypes.c_uint(0xFFFFFFFE)  # DWMWA_COLOR_NONE
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            ctypes.c_void_p(hwnd), 34, ctypes.byref(border), ctypes.sizeof(border)
+        )
+    with contextlib.suppress(Exception):
+        policy = ctypes.c_int(1)  # DWMNCRP_DISABLED; removes the borderless-window shadow.
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            ctypes.c_void_p(hwnd), 2, ctypes.byref(policy), ctypes.sizeof(policy)
+        )
+    return rounded
+
+
 def apply_rounded_window_region(root: tk.Tk, width: int, height: int, radius: int) -> bool:
     if sys.platform != "win32":
         return False
     try:
         root.update_idletasks()
-        hwnd = root.winfo_id()
+        hwnd = windows_toplevel_handle(root)
+        if hwnd is None:
+            return False
         diameter = max(2, int(radius * 2))
         region = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, int(width) + 1, int(height) + 1, diameter, diameter)
         if not region:
@@ -1029,7 +1094,7 @@ class CardRenderer:
     def __init__(self) -> None:
         if Image is None or ImageDraw is None or ImageFilter is None:
             raise RuntimeError("Pillow is unavailable")
-        self._panel_surfaces: dict[bool, Image.Image] = {}
+        self._panel_surfaces: dict[tuple[bool, bool], Image.Image] = {}
         self.glass_panel = self._load_glass_panel()
         self.codex_mark = self._load_codex_mark()
 
@@ -1067,12 +1132,20 @@ class CardRenderer:
     def xy(self, *values: float) -> tuple[int, ...]:
         return tuple(self.sc(value) for value in values)
 
-    def render(self, sample: dict[str, Any] | None, hover: bool = False) -> Image.Image:
+    def render_rgba(self, sample: dict[str, Any] | None, hover: bool = False) -> Image.Image:
+        return self._render_surface(sample, hover=hover, native=False)
+
+    def _render_surface(
+        self,
+        sample: dict[str, Any] | None,
+        hover: bool,
+        native: bool,
+    ) -> Image.Image:
         sample = empty_sample() if sample is None else sample
         scale = self.SCALE
         width, height = self.WIDTH * scale, self.HEIGHT * scale
         image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        image = self._paint_acrylic_panel(image, hover=hover)
+        image = self._paint_acrylic_panel(image, hover=hover, native=native)
         draw = ImageDraw.Draw(image)
 
         self._draw_header(image, draw, sample)
@@ -1080,28 +1153,61 @@ class CardRenderer:
         self._draw_account_info(draw, sample)
         self._draw_footer(draw, sample)
 
-        rendered = image.convert("RGB").resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
-        return self._apply_window_corner_mask(rendered)
+        rendered = image.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
+        return rendered if native else self._apply_window_corner_alpha(rendered)
 
-    def _apply_window_corner_mask(self, image: Image.Image) -> Image.Image:
-        background = Image.new("RGB", image.size, self.KEY)
-        mask = Image.new("L", image.size, 0)
-        draw = ImageDraw.Draw(mask)
-        draw.rounded_rectangle((0, 0, image.size[0] - 1, image.size[1] - 1), radius=28, fill=255)
-        background.paste(image, (0, 0), mask)
+    def render(self, sample: dict[str, Any] | None, hover: bool = False) -> Image.Image:
+        rgba = self.render_rgba(sample, hover=hover)
+        background = Image.new("RGB", rgba.size, self.KEY)
+        binary_alpha = rgba.getchannel("A").point(lambda value: 255 if value >= 128 else 0)
+        background.paste(rgba.convert("RGB"), (0, 0), binary_alpha)
         return background
 
-    def _paint_acrylic_panel(self, image: Image.Image, hover: bool = False) -> Image.Image:
-        cached = self._panel_surfaces.get(hover)
+    def render_native(self, sample: dict[str, Any] | None, hover: bool = False) -> Image.Image:
+        return self._render_surface(sample, hover=hover, native=True).convert("RGB")
+
+    def _apply_window_corner_alpha(self, image: Image.Image) -> Image.Image:
+        oversample = 4
+        mask_size = (image.size[0] * oversample, image.size[1] * oversample)
+        mask = Image.new("L", mask_size, 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle(
+            (0, 0, mask_size[0] - 1, mask_size[1] - 1),
+            radius=28 * oversample,
+            fill=255,
+        )
+        mask = mask.resize(image.size, Image.Resampling.LANCZOS)
+        alpha = image.getchannel("A")
+        if ImageChops is not None:
+            alpha = ImageChops.multiply(alpha, mask)
+        else:
+            alpha = Image.composite(alpha, Image.new("L", image.size, 0), mask)
+        result = image.copy()
+        result.putalpha(alpha)
+        return result
+
+    def _paint_acrylic_panel(
+        self,
+        image: Image.Image,
+        hover: bool = False,
+        native: bool = False,
+    ) -> Image.Image:
+        cache_key = (hover, native)
+        cached = self._panel_surfaces.get(cache_key)
         if cached is not None:
             return Image.alpha_composite(image, cached)
 
         if self.glass_panel is not None:
             panel = self.glass_panel.copy()
+            if native:
+                inset = self.sc(20)
+                panel = panel.crop((inset, inset, panel.width - inset, panel.height - inset))
+                panel = panel.resize(self.glass_panel.size, Image.Resampling.LANCZOS)
+                panel.putalpha(255)
             if hover:
                 glass_lift = Image.new("RGBA", panel.size, (154, 174, 188, 18))
                 panel = Image.alpha_composite(panel, glass_lift)
-            self._panel_surfaces[hover] = panel.copy()
+            self._panel_surfaces[cache_key] = panel.copy()
             return Image.alpha_composite(image, panel)
 
         width, height = image.size
@@ -1179,7 +1285,7 @@ class CardRenderer:
         noise_layer = Image.new("RGBA", (width, height), (255, 255, 255, 0))
         noise_layer.putalpha(noise_alpha)
         panel = Image.alpha_composite(panel, noise_layer)
-        self._panel_surfaces[hover] = panel.copy()
+        self._panel_surfaces[cache_key] = panel.copy()
         return Image.alpha_composite(image, panel)
 
     def _font(self, size: int, bold: bool = False) -> ImageFont.ImageFont:
@@ -1512,9 +1618,10 @@ class CardRenderer:
 
         reset_value = tr("times_left", value=resets) if resets is not None else "--"
         draw.line(self.xy(158, 376, 158, 472), fill="#3B444C", width=self.sc(1))
+        reset_note = tr("codex_credits") if sample.get("resets_source") == "credits" else tr("weekly_cycle")
         columns = (
             (40, 148, 47, tr("plan_expires"), expiry_value, expiry_note, "calendar"),
-            (188, 280, 195, tr("resets_left"), reset_value, tr("weekly_cycle"), "cycle"),
+            (188, 280, 195, tr("resets_left"), reset_value, reset_note, "cycle"),
         )
         for x1, x2, icon_x, label, value, note, icon in columns:
             icon_y = 383
@@ -1671,6 +1778,7 @@ class UsageWidget:
         self.current_sample: dict[str, Any] | None = None
         self.last_source_stamp: tuple[tuple[str, int, int], ...] | None = None
         self.photo: ImageTk.PhotoImage | None = None
+        self.native_corners = False
         self._build_window()
         self._make_menu()
         self._place_initial()
@@ -1690,19 +1798,22 @@ class UsageWidget:
         self.root.attributes("-topmost", bool(self.config.get("always_on_top", True)))
         with contextlib.suppress(Exception):
             self.root.attributes("-alpha", 1.0)
-        with contextlib.suppress(Exception):
-            self.root.wm_attributes("-transparentcolor", self.KEY)
-        apply_windows_glass(self.root)
+        if sys.platform != "win32":
+            with contextlib.suppress(Exception):
+                self.root.wm_attributes("-transparentcolor", self.KEY)
         self.label = tk.Label(self.root, bg=self.KEY, bd=0, highlightthickness=0)
         self.label.pack(fill="both", expand=True)
-        self.label.bind("<ButtonPress-1>", self._begin_drag)
-        self.label.bind("<B1-Motion>", self._drag)
-        self.label.bind("<ButtonRelease-1>", self._end_drag)
-        self.label.bind("<Button-3>", self._show_menu)
-        self.label.bind("<Enter>", lambda _event: self._set_hovered(True))
-        self.label.bind("<Leave>", lambda _event: self._set_hovered(False))
+        self._bind_pointer_events(self.label)
         self.root.bind("<Escape>", lambda _event: self.quit())
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
+
+    def _bind_pointer_events(self, surface: tk.Misc) -> None:
+        surface.bind("<ButtonPress-1>", self._begin_drag)
+        surface.bind("<B1-Motion>", self._drag)
+        surface.bind("<ButtonRelease-1>", self._end_drag)
+        surface.bind("<Button-3>", self._show_menu)
+        surface.bind("<Enter>", lambda _event: self._set_hovered(True))
+        surface.bind("<Leave>", lambda _event: self._set_hovered(False))
 
     def _make_menu(self) -> None:
         self.menu = tk.Menu(self.root, tearoff=False)
@@ -1725,13 +1836,28 @@ class UsageWidget:
         self.root.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
 
     def _apply_window_shape(self) -> None:
+        if sys.platform == "win32":
+            self.native_corners = apply_windows_native_corners(self.root)
+            if self.native_corners:
+                return
+            with contextlib.suppress(Exception):
+                self.root.wm_attributes("-transparentcolor", self.KEY)
+            apply_windows_glass(self.root)
         apply_rounded_window_region(self.root, self.WIDTH, self.HEIGHT, 28)
 
     def _set_image(self, sample: dict[str, Any]) -> None:
         self.current_sample = sample
-        image = self.renderer.render(sample, hover=self.hovered)
-        self.photo = ImageTk.PhotoImage(image)
-        self.label.configure(image=self.photo)
+        image = (
+            self.renderer.render_native(sample, hover=self.hovered)
+            if self.native_corners
+            else self.renderer.render(sample, hover=self.hovered)
+        )
+        next_photo = ImageTk.PhotoImage(image)
+        previous_photo = self.photo
+        self.label.configure(image=next_photo)
+        self.photo = next_photo
+        self.label.update_idletasks()
+        del previous_photo
 
     def _set_hovered(self, hovered: bool) -> None:
         if self.hovered == hovered or self.closed:
@@ -2316,6 +2442,21 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(resets_before_expiry(next_reset, next_reset - 1, now=now), 0)
         self.assertEqual(resets_before_expiry(next_reset, now - 1, now=now), 0)
 
+    def test_uses_codex_credit_balance_for_resets_remaining(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            home = pathlib.Path(td) / ".codex"
+            payload = example_rate_limits()
+            payload["credits"] = {"has_credits": False, "unlimited": False, "balance": "0"}
+            write_session_event(home, payload)
+            sample = CodexRateLimitReader({"codex_home": str(home)}).read()
+            self.assertEqual(sample["resets_remaining"], 0)
+            self.assertEqual(sample["resets_source"], "credits")
+
+            payload["credits"] = {"has_credits": True, "unlimited": False, "balance": "2"}
+            write_session_event(home, payload, timestamp=int(now_ts()) + 1)
+            sample = CodexRateLimitReader({"codex_home": str(home)}).read()
+            self.assertEqual(sample["resets_remaining"], 2)
+
     def test_marks_expired_window_stale_without_hiding_value(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             home = pathlib.Path(td) / ".codex"
@@ -2361,6 +2502,19 @@ class ReaderTests(unittest.TestCase):
         pixels = image.get_flattened_data() if hasattr(image, "get_flattened_data") else image.getdata()
         self.assertGreater(len(set(pixels)), 50)
 
+        rgba = renderer.render_rgba(sample)
+        self.assertEqual(rgba.mode, "RGBA")
+        corner_crop = rgba.getchannel("A").crop((0, 0, 32, 32))
+        corner_alpha = list(
+            corner_crop.get_flattened_data() if hasattr(corner_crop, "get_flattened_data") else corner_crop.getdata()
+        )
+        self.assertIn(0, corner_alpha)
+        self.assertTrue(any(0 < alpha < 255 for alpha in corner_alpha))
+
+        native = renderer.render_native(sample)
+        self.assertEqual(native.mode, "RGB")
+        self.assertNotEqual(native.getpixel((0, 0)), (1, 2, 3))
+
     def test_renderer_supports_english_and_chinese(self) -> None:
         if Image is None:
             self.skipTest("Pillow unavailable")
@@ -2404,6 +2558,8 @@ def run_tests(include_ui: bool = False) -> int:
         root = tk.Tk()
         set_window_icon(root)
         widget = UsageWidget(root, dict(DEFAULT_CONFIG), snapshot_func=fake_snapshot)
+        root.after(180, lambda: widget.label.event_generate("<Enter>"))
+        root.after(360, lambda: widget.label.event_generate("<Leave>"))
         root.after(650, widget.quit)
         root.mainloop()
         print("UI smoke ok")
