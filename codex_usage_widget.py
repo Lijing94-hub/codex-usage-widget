@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import calendar
 import contextlib
 import ctypes
 import datetime as dt
@@ -113,7 +112,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "resets_left": "Resets left",
         "weekly_cycle": "Future resets only",
         "codex_credits": "From Codex credits",
-        "estimated": "Estimated",
+        "current_plan": "Current plan",
+        "active_now": "Live and active",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -183,7 +183,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "resets_left": "剩余重置",
         "weekly_cycle": "仅含后续重置",
         "codex_credits": "来自 Codex 额度",
-        "estimated": "预计",
+        "current_plan": "当前套餐",
+        "active_now": "实时有效",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -387,14 +388,6 @@ def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
     return metadata
 
 
-def _add_calendar_month(timestamp: float) -> float:
-    value = dt.datetime.fromtimestamp(timestamp, tz=dt.timezone.utc)
-    year = value.year + (1 if value.month == 12 else 0)
-    month = 1 if value.month == 12 else value.month + 1
-    day = min(value.day, calendar.monthrange(year, month)[1])
-    return value.replace(year=year, month=month, day=day).timestamp()
-
-
 def resolve_plan_expiry(
     expires_at: Any,
     source_event_at: Any,
@@ -424,14 +417,11 @@ def resolve_plan_expiry(
         and event_at > expiry
         and 0 <= current - event_at <= 2 * 24 * 3600
     )
-    if expiry >= current or not fresh_paid_event:
+    if expiry >= current:
         return expiry, "token"
-
-    for _ in range(24):
-        expiry = _add_calendar_month(expiry)
-        if expiry > current:
-            return expiry, "renewal_estimate"
-    return expiry, "renewal_estimate"
+    if fresh_paid_event:
+        return None, "active_without_expiry"
+    return expiry, "stale_token"
 
 
 def resets_before_expiry(
@@ -1672,15 +1662,16 @@ class CardRenderer:
         plan = str(sample.get("plan_type") or "Codex").upper()
         expires_at = clean_float(sample.get("plan_expires_at"))
         resets = clean_int(sample.get("resets_remaining"), 0)
+        account_label = tr("plan_expires")
 
-        if expires_at:
+        if sample.get("plan_expires_source") == "active_without_expiry":
+            account_label = tr("current_plan")
+            expiry_value = plan
+            expiry_note = tr("active_now")
+        elif expires_at:
             expires = dt.datetime.fromtimestamp(expires_at).astimezone()
             expiry_value = expires.strftime("%m/%d")
-            expiry_note = (
-                f"{tr('estimated')} · {plan}"
-                if sample.get("plan_expires_source") == "renewal_estimate"
-                else f"{expires.strftime('%H:%M')} · {plan}"
-            )
+            expiry_note = f"{expires.strftime('%H:%M')} · {plan}"
         else:
             expiry_value = "--/--"
             expiry_note = plan
@@ -1689,7 +1680,7 @@ class CardRenderer:
         draw.line(self.xy(158, 376, 158, 472), fill="#3B444C", width=self.sc(1))
         reset_note = tr("codex_credits") if sample.get("resets_source") == "credits" else tr("weekly_cycle")
         columns = (
-            (40, 148, 47, tr("plan_expires"), expiry_value, expiry_note, "calendar"),
+            (40, 148, 47, account_label, expiry_value, expiry_note, "calendar"),
             (188, 280, 195, tr("resets_left"), reset_value, reset_note, "cycle"),
         )
         for x1, x2, icon_x, label, value, note, icon in columns:
@@ -2505,17 +2496,17 @@ class ReaderTests(unittest.TestCase):
             self.assertEqual(metadata["plan_expires_at"], parse_event_timestamp(account["chatgpt_subscription_active_until"]))
             self.assertNotIn("id_token", metadata)
 
-    def test_rolls_expired_monthly_plan_after_fresh_paid_event(self) -> None:
+    def test_hides_stale_expiry_after_fresh_paid_event(self) -> None:
         expiry = parse_event_timestamp("2026-07-24T09:15:15+00:00")
         event = parse_event_timestamp("2026-07-27T01:00:00+00:00")
         now = parse_event_timestamp("2026-07-27T02:00:00+00:00")
         resolved, source = resolve_plan_expiry(expiry, event, "plus", now=now)
-        self.assertEqual(resolved, parse_event_timestamp("2026-08-24T09:15:15+00:00"))
-        self.assertEqual(source, "renewal_estimate")
+        self.assertIsNone(resolved)
+        self.assertEqual(source, "active_without_expiry")
 
         resolved, source = resolve_plan_expiry(expiry, expiry - 1, "plus", now=now)
         self.assertEqual(resolved, expiry)
-        self.assertEqual(source, "token")
+        self.assertEqual(source, "stale_token")
 
     def test_counts_only_future_weekly_resets_before_plan_expiry(self) -> None:
         now = parse_event_timestamp("2026-07-14T08:47:34+08:00")
