@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import calendar
 import contextlib
 import ctypes
 import datetime as dt
@@ -112,6 +113,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "resets_left": "Resets left",
         "weekly_cycle": "Future resets only",
         "codex_credits": "From Codex credits",
+        "estimated": "Estimated",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -181,6 +183,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "resets_left": "剩余重置",
         "weekly_cycle": "仅含后续重置",
         "codex_credits": "来自 Codex 额度",
+        "estimated": "预计",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -353,7 +356,12 @@ def codex_home_from_config(config: dict[str, Any]) -> pathlib.Path:
 
 
 def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
-    metadata = {"plan_type": None, "plan_expires_at": None, "plan_checked_at": None}
+    metadata = {
+        "plan_type": None,
+        "plan_started_at": None,
+        "plan_expires_at": None,
+        "plan_checked_at": None,
+    }
     auth = load_json(codex_home / "auth.json", {})
     if not isinstance(auth, dict):
         return metadata
@@ -371,11 +379,59 @@ def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
         if not isinstance(account, dict):
             return metadata
         metadata["plan_type"] = account.get("chatgpt_plan_type")
+        metadata["plan_started_at"] = parse_event_timestamp(account.get("chatgpt_subscription_active_start"))
         metadata["plan_expires_at"] = parse_event_timestamp(account.get("chatgpt_subscription_active_until"))
         metadata["plan_checked_at"] = parse_event_timestamp(account.get("chatgpt_subscription_last_checked"))
     except Exception as exc:
         log_line(f"Failed to read local plan metadata: {exc}")
     return metadata
+
+
+def _add_calendar_month(timestamp: float) -> float:
+    value = dt.datetime.fromtimestamp(timestamp, tz=dt.timezone.utc)
+    year = value.year + (1 if value.month == 12 else 0)
+    month = 1 if value.month == 12 else value.month + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day).timestamp()
+
+
+def resolve_plan_expiry(
+    expires_at: Any,
+    source_event_at: Any,
+    plan_type: Any,
+    now: Any = None,
+) -> tuple[float | None, str | None]:
+    expiry = clean_float(expires_at)
+    event_at = clean_float(source_event_at)
+    current = now_ts() if now is None else clean_float(now)
+    if expiry is None:
+        return None, None
+    if expiry > 10_000_000_000:
+        expiry /= 1000
+    if event_at is not None and event_at > 10_000_000_000:
+        event_at /= 1000
+    if current is None:
+        current = now_ts()
+    if current > 10_000_000_000:
+        current /= 1000
+
+    paid_plan = str(plan_type or "").strip().lower() in {
+        "plus", "pro", "team", "business", "enterprise", "edu"
+    }
+    fresh_paid_event = (
+        paid_plan
+        and event_at is not None
+        and event_at > expiry
+        and 0 <= current - event_at <= 2 * 24 * 3600
+    )
+    if expiry >= current or not fresh_paid_event:
+        return expiry, "token"
+
+    for _ in range(24):
+        expiry = _add_calendar_month(expiry)
+        if expiry > current:
+            return expiry, "renewal_estimate"
+    return expiry, "renewal_estimate"
 
 
 def resets_before_expiry(
@@ -516,8 +572,10 @@ def empty_sample(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "source_path": None,
         "codex_home": str(codex_home_from_config(config)),
         "plan_type": None,
+        "plan_started_at": None,
         "plan_expires_at": None,
         "plan_checked_at": None,
+        "plan_expires_source": None,
         "resets_remaining": None,
         "resets_source": None,
         "limit_id": None,
@@ -677,6 +735,7 @@ class CodexRateLimitReader:
         sample = empty_sample(self.config)
         plan = read_local_plan_metadata(self.codex_home)
         sample["plan_type"] = plan.get("plan_type")
+        sample["plan_started_at"] = plan.get("plan_started_at")
         sample["plan_expires_at"] = plan.get("plan_expires_at")
         sample["plan_checked_at"] = plan.get("plan_checked_at")
         latest = self._find_latest_rate_limits()
@@ -693,6 +752,12 @@ class CodexRateLimitReader:
         sample["source_event_at"] = latest.get("timestamp")
         sample["source_path"] = str(latest.get("path"))
         sample["plan_type"] = raw.get("plan_type") or sample.get("plan_type")
+        sample["plan_expires_at"], sample["plan_expires_source"] = resolve_plan_expiry(
+            sample.get("plan_expires_at"),
+            sample.get("source_event_at"),
+            sample.get("plan_type"),
+            now=sample.get("snapshot_at"),
+        )
         credit_resets = resets_from_credits(raw)
         if credit_resets is not None:
             sample["resets_remaining"] = credit_resets
@@ -1611,7 +1676,11 @@ class CardRenderer:
         if expires_at:
             expires = dt.datetime.fromtimestamp(expires_at).astimezone()
             expiry_value = expires.strftime("%m/%d")
-            expiry_note = f"{expires.strftime('%H:%M')} · {plan}"
+            expiry_note = (
+                f"{tr('estimated')} · {plan}"
+                if sample.get("plan_expires_source") == "renewal_estimate"
+                else f"{expires.strftime('%H:%M')} · {plan}"
+            )
         else:
             expiry_value = "--/--"
             expiry_note = plan
@@ -2423,6 +2492,7 @@ class ReaderTests(unittest.TestCase):
             home.mkdir(parents=True)
             account = {
                 "chatgpt_plan_type": "plus",
+                "chatgpt_subscription_active_start": "2026-06-24T09:15:15+00:00",
                 "chatgpt_subscription_active_until": "2026-07-24T09:15:15+00:00",
                 "chatgpt_subscription_last_checked": "2026-07-13T00:00:00+00:00",
             }
@@ -2431,8 +2501,21 @@ class ReaderTests(unittest.TestCase):
             atomic_write_json(home / "auth.json", {"tokens": {"id_token": f"header.{encoded}.signature"}})
             metadata = read_local_plan_metadata(home)
             self.assertEqual(metadata["plan_type"], "plus")
+            self.assertEqual(metadata["plan_started_at"], parse_event_timestamp(account["chatgpt_subscription_active_start"]))
             self.assertEqual(metadata["plan_expires_at"], parse_event_timestamp(account["chatgpt_subscription_active_until"]))
             self.assertNotIn("id_token", metadata)
+
+    def test_rolls_expired_monthly_plan_after_fresh_paid_event(self) -> None:
+        expiry = parse_event_timestamp("2026-07-24T09:15:15+00:00")
+        event = parse_event_timestamp("2026-07-27T01:00:00+00:00")
+        now = parse_event_timestamp("2026-07-27T02:00:00+00:00")
+        resolved, source = resolve_plan_expiry(expiry, event, "plus", now=now)
+        self.assertEqual(resolved, parse_event_timestamp("2026-08-24T09:15:15+00:00"))
+        self.assertEqual(source, "renewal_estimate")
+
+        resolved, source = resolve_plan_expiry(expiry, expiry - 1, "plus", now=now)
+        self.assertEqual(resolved, expiry)
+        self.assertEqual(source, "token")
 
     def test_counts_only_future_weekly_resets_before_plan_expiry(self) -> None:
         now = parse_event_timestamp("2026-07-14T08:47:34+08:00")
