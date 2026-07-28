@@ -141,6 +141,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "billing_cancel": "Cancel",
         "billing_invalid": "Enter a valid date in YYYY-MM-DD format.",
         "billing_saved": "Plan date confirmed",
+        "billing_required": "Confirm date",
+        "billing_google": "Google Play billing",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -230,6 +232,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "billing_cancel": "取消",
         "billing_invalid": "请输入 YYYY-MM-DD 格式的有效日期。",
         "billing_saved": "套餐日期已确认",
+        "billing_required": "待确认",
+        "billing_google": "Google Play 账单",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -433,8 +437,13 @@ def apply_confirmed_billing_date(
     config: dict[str, Any],
     now: Any = None,
 ) -> dict[str, Any]:
+    channel = config.get("billing_expiry_channel")
+    sample["billing_expiry_channel"] = channel
     expires_at = billing_date_timestamp(config.get("billing_expiry_date"))
     if expires_at is None:
+        if channel in BILLING_URLS:
+            sample["plan_expires_at"] = None
+            sample["plan_expires_source"] = "billing_required"
         return sample
     current = now_ts() if now is None else (clean_float(now) or now_ts())
     local_today = dt.datetime.fromtimestamp(current).astimezone().date()
@@ -444,7 +453,6 @@ def apply_confirmed_billing_date(
         "billing_confirmed" if expiry_date is not None and expiry_date >= local_today else "billing_expired"
     )
     sample["plan_expires_confirmed_at"] = clean_float(config.get("billing_expiry_confirmed_at"))
-    sample["billing_expiry_channel"] = config.get("billing_expiry_channel")
     return sample
 
 
@@ -1761,7 +1769,14 @@ class CardRenderer:
         account_label = tr("plan_expires")
         expiry_source = sample.get("plan_expires_source")
 
-        if expiry_source == "active_without_expiry":
+        if expiry_source == "billing_required":
+            expiry_value = tr("billing_required")
+            expiry_note = (
+                tr("billing_google")
+                if sample.get("billing_expiry_channel") == "google"
+                else tr("sync_plan_date")
+            )
+        elif expiry_source == "active_without_expiry":
             account_label = tr("current_plan")
             expiry_value = plan
             expiry_note = tr("active_now")
@@ -1957,6 +1972,8 @@ class UsageWidget:
         self.root.after(int(self.config.get("refresh_seconds", DEFAULT_REFRESH_SECONDS)) * 1000, self._schedule_refresh)
         self._watch_source_changes()
         self._ensure_visible_loop()
+        if self.config.get("billing_expiry_channel") in BILLING_URLS and not self.config.get("billing_expiry_date"):
+            self.root.after(700, self.open_billing_sync)
 
     def _build_window(self) -> None:
         self.root.title(tr("app_name"))
@@ -2867,6 +2884,13 @@ class ReaderTests(unittest.TestCase):
             now=now,
         )
         self.assertEqual(sample["plan_expires_source"], "billing_expired")
+
+    def test_missing_google_billing_date_is_explicit(self) -> None:
+        sample = empty_sample()
+        sample["plan_expires_source"] = "active_without_expiry"
+        apply_confirmed_billing_date(sample, {"billing_expiry_channel": "google"})
+        self.assertEqual(sample["plan_expires_source"], "billing_required")
+        self.assertEqual(sample["billing_expiry_channel"], "google")
 
     def test_rejects_invalid_billing_dates(self) -> None:
         self.assertIsNone(parse_billing_date("2026-02-30"))
