@@ -41,7 +41,7 @@ Codex Usage Widget is built for people who keep Codex open all day and want quot
 It sits quietly on the desktop and keeps the account details that matter most large enough to read at a glance:
 
 - `7D`: the weekly Codex quota
-- Plan expiration from the local Codex login metadata
+- Confirmed plan expiration from the official ChatGPT, Apple, or Google Play billing page
 - Estimated resets remaining before expiration, based on the current 7-day cycle
 
 The interface is intentionally compact and premium-feeling: a smooth Image-2-generated graphite glass material plate, Liquid Glass-inspired controls, high-DPI dynamic typography, rounded geometry, Codex branding, a semantic quota bar without duplicate labels, hover translucency, and a focused weekly-usage layout.
@@ -64,7 +64,7 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 - Smooth Image-2 glass material integrated into the real renderer, not used as a static mockup
 - Real local Codex limit snapshots, not mocked counters
 - Big remaining-percentage typography for quick scanning
-- Local plan expiration and estimated resets remaining before expiration
+- Locally confirmed plan expiration and estimated resets remaining before expiration
 - Green remaining segment and orange used segment for instant visual understanding
 - Hover glass mode, so you can inspect content underneath without fully hiding quota data
 - Manual refresh, auto refresh, always-on-top mode, and drag-to-position
@@ -93,7 +93,7 @@ Unzip it, then double-click `CodexUsageWidget.exe`.
 
 This widget only reads local Codex files under your own `~/.codex` directory.
 
-It does not upload data, does not call a server, and does not read or display your conversation content. The UI only uses local rate-limit snapshots plus the plan type and subscription expiration already stored in the local Codex login metadata. Tokens are never displayed or copied into the widget cache.
+It does not upload data and does not read or display your conversation content. Usage data comes from local Codex rate-limit snapshots. For an accurate subscription date, click the plan section or use **Sync plan date**, open the official billing page for ChatGPT, Apple, or Google Play, then confirm the date shown there. Only that date and billing channel are stored locally; passwords, cookies, and tokens are never collected or copied into the widget cache.
 
 ## Windows Quick Start
 
@@ -124,7 +124,8 @@ Source-mode optional:
 
 - Double-click `install-startup.cmd` to launch it automatically when Windows starts.
 - Double-click `uninstall-startup.cmd` to remove startup launch.
-- Right-click the widget for refresh, always-on-top, reset position, and quit.
+- Click the plan section, or right-click and choose **Sync plan date**, to confirm the exact date from your billing provider.
+- Right-click the widget for refresh, plan date sync, always-on-top, reset position, and quit.
 
 ## Build Windows Release
 

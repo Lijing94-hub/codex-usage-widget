@@ -20,7 +20,7 @@ The first launch creates a local `.venv` folder and installs Pillow. Later launc
 The widget reads local files under `~/.codex` and displays:
 
 - 7-day remaining quota
-- Plan expiration
+- Plan expiration confirmed from ChatGPT, Apple, or Google Play billing
 - Estimated resets remaining before expiration
 
 It does not upload data and does not display conversation content.

@@ -19,6 +19,7 @@ import threading
 import time
 import traceback
 import unittest
+import webbrowser
 from typing import Any, Callable
 
 try:
@@ -40,7 +41,7 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
 
 
 APP_NAME = "Codex Usage Widget"
-APP_VERSION = 3
+APP_VERSION = 4
 
 
 def runtime_app_dir() -> pathlib.Path:
@@ -92,6 +93,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "window_y": None,
     "codex_home": None,
     "language": "system",
+    "billing_expiry_date": None,
+    "billing_expiry_confirmed_at": None,
+    "billing_expiry_channel": None,
+}
+
+BILLING_URLS = {
+    "web": "https://chatgpt.com/",
+    "apple": "https://apps.apple.com/account/subscriptions",
+    "google": "https://play.google.com/store/account/subscriptions",
 }
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
@@ -114,6 +124,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "codex_credits": "From Codex credits",
         "current_plan": "Current plan",
         "active_now": "Live and active",
+        "billing_verified": "Billing confirmed · {plan}",
+        "billing_expired": "Confirm again · {plan}",
+        "billing_due_soon": "Due soon · {plan}",
+        "sync_plan_date": "Sync plan date",
+        "sync_plan_title": "Confirm plan date",
+        "sync_plan_intro": "Open the billing source you paid through, then enter the exact next billing or plan end date shown there.",
+        "sync_plan_privacy": "Only the date is stored locally. No account, password, cookie, or token is collected.",
+        "open_chatgpt_billing": "ChatGPT",
+        "open_apple_billing": "Apple",
+        "open_google_billing": "Google Play",
+        "billing_date_label": "NEXT BILLING / PLAN END DATE",
+        "billing_date_format": "Use YYYY-MM-DD",
+        "billing_save": "Confirm date",
+        "billing_clear": "Clear",
+        "billing_cancel": "Cancel",
+        "billing_invalid": "Enter a valid date in YYYY-MM-DD format.",
+        "billing_saved": "Plan date confirmed",
         "times_left": "{value} left",
         "used": "Used",
         "waiting": "Waiting",
@@ -142,6 +169,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "footer_waiting": "Waiting for Codex limit data",
         "footer_usage_changed": "Used {delta}% · just now",
         "menu_refresh": "Refresh now",
+        "menu_sync_plan": "Sync plan date",
         "menu_topmost": "Always on top / off",
         "menu_reset": "Reset to top right",
         "menu_quit": "Quit",
@@ -185,6 +213,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "codex_credits": "来自 Codex 额度",
         "current_plan": "当前套餐",
         "active_now": "实时有效",
+        "billing_verified": "账单已确认 · {plan}",
+        "billing_expired": "请重新确认 · {plan}",
+        "billing_due_soon": "即将到期 · {plan}",
+        "sync_plan_date": "同步套餐日期",
+        "sync_plan_title": "确认套餐日期",
+        "sync_plan_intro": "打开实际付款渠道的账单页面，再填入页面显示的准确下次扣款或套餐结束日期。",
+        "sync_plan_privacy": "仅在本机保存日期，不读取账号、密码、Cookie 或令牌。",
+        "open_chatgpt_billing": "ChatGPT",
+        "open_apple_billing": "Apple",
+        "open_google_billing": "Google Play",
+        "billing_date_label": "下次扣款 / 套餐结束日期",
+        "billing_date_format": "格式：YYYY-MM-DD",
+        "billing_save": "确认日期",
+        "billing_clear": "清除",
+        "billing_cancel": "取消",
+        "billing_invalid": "请输入 YYYY-MM-DD 格式的有效日期。",
+        "billing_saved": "套餐日期已确认",
         "times_left": "{value} 次",
         "used": "已用",
         "waiting": "等待",
@@ -213,6 +258,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "footer_waiting": "等待 Codex 额度数据",
         "footer_usage_changed": "已用 {delta}% · 刚刚",
         "menu_refresh": "立即刷新",
+        "menu_sync_plan": "同步套餐日期",
         "menu_topmost": "置顶 / 取消置顶",
         "menu_reset": "回到右上角",
         "menu_quit": "退出",
@@ -340,6 +386,14 @@ def load_config() -> dict[str, Any]:
     config["always_on_top"] = bool(config.get("always_on_top", True))
     if config.get("codex_home"):
         config["codex_home"] = str(config["codex_home"])
+    if parse_billing_date(config.get("billing_expiry_date")) is None:
+        config["billing_expiry_date"] = None
+        config["billing_expiry_confirmed_at"] = None
+    else:
+        config["billing_expiry_date"] = str(config["billing_expiry_date"]).strip()
+        config["billing_expiry_confirmed_at"] = clean_float(config.get("billing_expiry_confirmed_at"))
+    channel = str(config.get("billing_expiry_channel") or "").strip().lower()
+    config["billing_expiry_channel"] = channel if channel in BILLING_URLS else None
     return config
 
 
@@ -354,6 +408,44 @@ def codex_home_from_config(config: dict[str, Any]) -> pathlib.Path:
     if configured:
         return pathlib.Path(str(configured)).expanduser()
     return pathlib.Path(os.environ.get("USERPROFILE") or str(pathlib.Path.home())) / ".codex"
+
+
+def parse_billing_date(value: Any) -> dt.date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = dt.datetime.strptime(value.strip(), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+    return parsed if 2020 <= parsed.year <= 2200 else None
+
+
+def billing_date_timestamp(value: Any) -> float | None:
+    parsed = parse_billing_date(value)
+    if parsed is None:
+        return None
+    local_zone = dt.datetime.now().astimezone().tzinfo
+    return dt.datetime.combine(parsed, dt.time(hour=12), tzinfo=local_zone).timestamp()
+
+
+def apply_confirmed_billing_date(
+    sample: dict[str, Any],
+    config: dict[str, Any],
+    now: Any = None,
+) -> dict[str, Any]:
+    expires_at = billing_date_timestamp(config.get("billing_expiry_date"))
+    if expires_at is None:
+        return sample
+    current = now_ts() if now is None else (clean_float(now) or now_ts())
+    local_today = dt.datetime.fromtimestamp(current).astimezone().date()
+    expiry_date = parse_billing_date(config.get("billing_expiry_date"))
+    sample["plan_expires_at"] = expires_at
+    sample["plan_expires_source"] = (
+        "billing_confirmed" if expiry_date is not None and expiry_date >= local_today else "billing_expired"
+    )
+    sample["plan_expires_confirmed_at"] = clean_float(config.get("billing_expiry_confirmed_at"))
+    sample["billing_expiry_channel"] = config.get("billing_expiry_channel")
+    return sample
 
 
 def read_local_plan_metadata(codex_home: pathlib.Path) -> dict[str, Any]:
@@ -566,6 +658,8 @@ def empty_sample(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "plan_expires_at": None,
         "plan_checked_at": None,
         "plan_expires_source": None,
+        "plan_expires_confirmed_at": None,
+        "billing_expiry_channel": None,
         "resets_remaining": None,
         "resets_source": None,
         "limit_id": None,
@@ -730,6 +824,7 @@ class CodexRateLimitReader:
         sample["plan_checked_at"] = plan.get("plan_checked_at")
         latest = self._find_latest_rate_limits()
         if latest is None:
+            apply_confirmed_billing_date(sample, self.config, now=sample.get("snapshot_at"))
             sample["errors"].append(tr("note_no_snapshot"))
             sample["note"] = tr("note_new_record")
             return sample
@@ -748,6 +843,7 @@ class CodexRateLimitReader:
             sample.get("plan_type"),
             now=sample.get("snapshot_at"),
         )
+        apply_confirmed_billing_date(sample, self.config, now=sample.get("snapshot_at"))
         credit_resets = resets_from_credits(raw)
         if credit_resets is not None:
             sample["resets_remaining"] = credit_resets
@@ -1663,15 +1759,26 @@ class CardRenderer:
         expires_at = clean_float(sample.get("plan_expires_at"))
         resets = clean_int(sample.get("resets_remaining"), 0)
         account_label = tr("plan_expires")
+        expiry_source = sample.get("plan_expires_source")
 
-        if sample.get("plan_expires_source") == "active_without_expiry":
+        if expiry_source == "active_without_expiry":
             account_label = tr("current_plan")
             expiry_value = plan
             expiry_note = tr("active_now")
         elif expires_at:
             expires = dt.datetime.fromtimestamp(expires_at).astimezone()
             expiry_value = expires.strftime("%m/%d")
-            expiry_note = f"{expires.strftime('%H:%M')} · {plan}"
+            if expiry_source == "billing_expired":
+                expiry_note = tr("billing_expired", plan=plan)
+            elif expiry_source == "billing_confirmed":
+                days_left = (expires.date() - dt.datetime.now().astimezone().date()).days
+                expiry_note = (
+                    tr("billing_due_soon", plan=plan)
+                    if days_left <= 3
+                    else tr("billing_verified", plan=plan)
+                )
+            else:
+                expiry_note = f"{expires.strftime('%H:%M')} · {plan}"
         else:
             expiry_value = "--/--"
             expiry_note = plan
@@ -1839,6 +1946,7 @@ class UsageWidget:
         self.last_source_stamp: tuple[tuple[str, int, int], ...] | None = None
         self.photo: ImageTk.PhotoImage | None = None
         self.native_corners = False
+        self.billing_dialog: tk.Toplevel | None = None
         self._build_window()
         self._make_menu()
         self._place_initial()
@@ -1878,6 +1986,8 @@ class UsageWidget:
     def _make_menu(self) -> None:
         self.menu = tk.Menu(self.root, tearoff=False)
         self.menu.add_command(label=tr("menu_refresh"), command=lambda: self.refresh(force=True))
+        self.menu.add_command(label=tr("menu_sync_plan"), command=self.open_billing_sync)
+        self.menu.add_separator()
         self.menu.add_command(label=tr("menu_topmost"), command=self.toggle_topmost)
         self.menu.add_command(label=tr("menu_reset"), command=self.reset_position)
         self.menu.add_separator()
@@ -1949,6 +2059,9 @@ class UsageWidget:
             if self._inside(event.x, event.y, 246, 22, 297, 72):
                 self.quit()
                 return
+            if self._inside(event.x, event.y, 28, 370, 158, 478):
+                self.open_billing_sync()
+                return
         self.config["window_x"] = self.root.winfo_x()
         self.config["window_y"] = self.root.winfo_y()
         save_config(self.config)
@@ -1958,6 +2071,224 @@ class UsageWidget:
 
     def _show_menu(self, event: tk.Event) -> None:
         self.menu.tk_popup(event.x_root, event.y_root)
+
+    def open_billing_sync(self) -> None:
+        if self.billing_dialog is not None and self.billing_dialog.winfo_exists():
+            self.billing_dialog.lift()
+            self.billing_dialog.focus_force()
+            return
+
+        dialog = tk.Toplevel(self.root)
+        self.billing_dialog = dialog
+        dialog.title(tr("sync_plan_title"))
+        dialog.configure(bg="#151A20")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.attributes("-topmost", True)
+        width, height = 430, 388
+        x = max(12, (dialog.winfo_screenwidth() - width) // 2)
+        y = max(12, (dialog.winfo_screenheight() - height) // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        set_window_icon(dialog)
+
+        content = tk.Frame(dialog, bg="#151A20", padx=26, pady=22)
+        content.pack(fill="both", expand=True)
+        tk.Label(
+            content,
+            text=tr("sync_plan_title"),
+            bg="#151A20",
+            fg="#F5F7FA",
+            font=("Segoe UI", 18, "bold"),
+            anchor="w",
+        ).pack(fill="x")
+        tk.Label(
+            content,
+            text=tr("sync_plan_intro"),
+            bg="#151A20",
+            fg="#AAB3BE",
+            font=("Segoe UI", 10),
+            justify="left",
+            wraplength=374,
+            anchor="w",
+            pady=8,
+        ).pack(fill="x")
+
+        channel_var = tk.StringVar(value=self.config.get("billing_expiry_channel") or "google")
+        button_row = tk.Frame(content, bg="#151A20")
+        button_row.pack(fill="x", pady=(8, 16))
+        channel_buttons: dict[str, tk.Button] = {}
+
+        def paint_channels() -> None:
+            selected = channel_var.get()
+            for key, button in channel_buttons.items():
+                button.configure(
+                    bg="#DCE8FF" if key == selected else "#242B33",
+                    fg="#101820" if key == selected else "#D8DEE6",
+                    activebackground="#DCE8FF" if key == selected else "#303944",
+                    activeforeground="#101820" if key == selected else "#FFFFFF",
+                )
+
+        def open_channel(channel: str) -> None:
+            channel_var.set(channel)
+            paint_channels()
+            with contextlib.suppress(Exception):
+                webbrowser.open(BILLING_URLS[channel], new=2)
+
+        channel_labels = {
+            "web": tr("open_chatgpt_billing"),
+            "apple": tr("open_apple_billing"),
+            "google": tr("open_google_billing"),
+        }
+        for index, channel in enumerate(("web", "apple", "google")):
+            button = tk.Button(
+                button_row,
+                text=channel_labels[channel],
+                command=lambda value=channel: open_channel(value),
+                relief="flat",
+                bd=0,
+                highlightthickness=0,
+                cursor="hand2",
+                font=("Segoe UI", 9, "bold"),
+                padx=11,
+                pady=8,
+            )
+            button.grid(row=0, column=index, padx=(0, 7 if index < 2 else 0), sticky="ew")
+            button_row.grid_columnconfigure(index, weight=1)
+            channel_buttons[channel] = button
+        paint_channels()
+
+        tk.Label(
+            content,
+            text=tr("billing_date_label"),
+            bg="#151A20",
+            fg="#7F8B98",
+            font=("Segoe UI", 8, "bold"),
+            anchor="w",
+        ).pack(fill="x")
+        date_var = tk.StringVar(value=str(self.config.get("billing_expiry_date") or ""))
+        entry = tk.Entry(
+            content,
+            textvariable=date_var,
+            bg="#20262D",
+            fg="#F7F9FB",
+            insertbackground="#F7F9FB",
+            selectbackground="#4A7FBE",
+            relief="flat",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground="#39434D",
+            highlightcolor="#72A8E3",
+            font=("Segoe UI", 18, "bold"),
+            justify="center",
+        )
+        entry.pack(fill="x", ipady=9, pady=(6, 2))
+        tk.Label(
+            content,
+            text=tr("billing_date_format"),
+            bg="#151A20",
+            fg="#6F7B87",
+            font=("Segoe UI", 9),
+            anchor="w",
+        ).pack(fill="x")
+        tk.Label(
+            content,
+            text=tr("sync_plan_privacy"),
+            bg="#151A20",
+            fg="#788591",
+            font=("Segoe UI", 9),
+            justify="left",
+            wraplength=374,
+            anchor="w",
+            pady=12,
+        ).pack(fill="x")
+
+        actions = tk.Frame(content, bg="#151A20")
+        actions.pack(fill="x", side="bottom")
+
+        def close_dialog() -> None:
+            with contextlib.suppress(Exception):
+                dialog.grab_release()
+            dialog.destroy()
+            self.billing_dialog = None
+
+        def save_date() -> None:
+            parsed = parse_billing_date(date_var.get())
+            if parsed is None:
+                if messagebox:
+                    messagebox.showerror(tr("sync_plan_title"), tr("billing_invalid"), parent=dialog)
+                entry.focus_set()
+                return
+            self.config["billing_expiry_date"] = parsed.isoformat()
+            self.config["billing_expiry_confirmed_at"] = now_ts()
+            self.config["billing_expiry_channel"] = channel_var.get()
+            save_config(self.config)
+            close_dialog()
+            self.refresh(force=True)
+
+        def clear_date() -> None:
+            self.config["billing_expiry_date"] = None
+            self.config["billing_expiry_confirmed_at"] = None
+            self.config["billing_expiry_channel"] = channel_var.get()
+            save_config(self.config)
+            close_dialog()
+            self.refresh(force=True)
+
+        tk.Button(
+            actions,
+            text=tr("billing_save"),
+            command=save_date,
+            bg="#DCE8FF",
+            fg="#101820",
+            activebackground="#EEF4FF",
+            activeforeground="#101820",
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+            font=("Segoe UI", 10, "bold"),
+            padx=18,
+            pady=9,
+        ).pack(side="right")
+        tk.Button(
+            actions,
+            text=tr("billing_cancel"),
+            command=close_dialog,
+            bg="#242B33",
+            fg="#D8DEE6",
+            activebackground="#303944",
+            activeforeground="#FFFFFF",
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+            font=("Segoe UI", 10),
+            padx=14,
+            pady=9,
+        ).pack(side="right", padx=(0, 8))
+        if self.config.get("billing_expiry_date"):
+            tk.Button(
+                actions,
+                text=tr("billing_clear"),
+                command=clear_date,
+                bg="#151A20",
+                fg="#8F9AA6",
+                activebackground="#20262D",
+                activeforeground="#FFFFFF",
+                relief="flat",
+                bd=0,
+                highlightthickness=0,
+                cursor="hand2",
+                font=("Segoe UI", 9),
+                padx=8,
+                pady=9,
+            ).pack(side="left")
+
+        dialog.protocol("WM_DELETE_WINDOW", close_dialog)
+        dialog.bind("<Escape>", lambda _event: close_dialog())
+        dialog.bind("<Return>", lambda _event: save_date())
+        dialog.grab_set()
+        entry.focus_set()
+        entry.selection_range(0, "end")
 
     def reset_position(self) -> None:
         sw = self.root.winfo_screenwidth()
@@ -2507,6 +2838,40 @@ class ReaderTests(unittest.TestCase):
         resolved, source = resolve_plan_expiry(expiry, expiry - 1, "plus", now=now)
         self.assertEqual(resolved, expiry)
         self.assertEqual(source, "stale_token")
+
+    def test_confirmed_billing_date_overrides_stale_token(self) -> None:
+        sample = empty_sample()
+        sample["plan_expires_at"] = parse_event_timestamp("2026-07-24T09:15:15+00:00")
+        sample["plan_expires_source"] = "stale_token"
+        now = parse_event_timestamp("2026-07-28T12:00:00+08:00")
+        apply_confirmed_billing_date(
+            sample,
+            {
+                "billing_expiry_date": "2026-08-24",
+                "billing_expiry_confirmed_at": now,
+                "billing_expiry_channel": "google",
+            },
+            now=now,
+        )
+        expected = billing_date_timestamp("2026-08-24")
+        self.assertEqual(sample["plan_expires_at"], expected)
+        self.assertEqual(sample["plan_expires_source"], "billing_confirmed")
+        self.assertEqual(sample["billing_expiry_channel"], "google")
+
+    def test_expired_billing_date_requires_confirmation(self) -> None:
+        sample = empty_sample()
+        now = parse_event_timestamp("2026-07-28T12:00:00+08:00")
+        apply_confirmed_billing_date(
+            sample,
+            {"billing_expiry_date": "2026-07-24", "billing_expiry_channel": "google"},
+            now=now,
+        )
+        self.assertEqual(sample["plan_expires_source"], "billing_expired")
+
+    def test_rejects_invalid_billing_dates(self) -> None:
+        self.assertIsNone(parse_billing_date("2026-02-30"))
+        self.assertIsNone(parse_billing_date("07/28/2026"))
+        self.assertEqual(parse_billing_date("2026-08-24"), dt.date(2026, 8, 24))
 
     def test_counts_only_future_weekly_resets_before_plan_expiry(self) -> None:
         now = parse_event_timestamp("2026-07-14T08:47:34+08:00")
