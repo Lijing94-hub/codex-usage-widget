@@ -6,11 +6,11 @@ https://github.com/Lijing94-hub/codex-usage-widget
 
 Windows direct download:
 
-https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexUsageWidget-Windows.zip
+https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip
 
 ## 中文短文案
 
-我做了一个 Codex 桌面用量小组件：Codex Usage Widget。
+我做了一个 Codex 桌面用量小组件：Codex Vision。
 
 它可以直接在桌面显示 Codex 的 7D 用量、套餐到期时间和到期前剩余重置次数，支持 Windows / macOS，数据只读取本地 Codex 文件，不上传服务器。界面把 Image-2 生成的石墨玻璃材质真正集成进程序，并配合 Liquid Glass 控件，支持悬停透明、自动刷新、手动刷新和系统语言适配。
 
@@ -28,7 +28,7 @@ https://github.com/Lijing94-hub/codex-usage-widget
 
 ## 发给朋友
 
-我最近做了个小作品，叫 Codex Usage Widget。它是一个桌面小组件，用来直接看 Codex 的 7D 用量、套餐到期和剩余重置次数，还支持 Windows / macOS。
+我最近做了个小作品，叫 Codex Vision。它是一个桌面小组件，用来直接看 Codex 的 7D 用量、套餐到期和剩余重置次数，还支持 Windows / macOS。
 
 项目地址在这里，方便的话帮我点个 Star：
 
@@ -54,7 +54,7 @@ https://github.com/Lijing94-hub/codex-usage-widget
 
 ## 英文备用版
 
-I built Codex Usage Widget, a small desktop widget for checking Codex 7-day usage, plan expiration, and estimated resets remaining at a glance.
+I built Codex Vision, a small desktop widget for checking Codex 7-day usage, plan expiration, and estimated resets remaining at a glance.
 
 It supports Windows and macOS, reads local Codex files only, and does not upload your data. The UI uses a compact dark acrylic/glass design with hover translucency, auto refresh, manual refresh, and system language detection.
 

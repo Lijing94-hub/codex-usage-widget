@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo This will publish Codex Usage Widget to GitHub.
+echo This will publish Codex Vision to GitHub.
 echo.
 
 git --version >nul 2>nul

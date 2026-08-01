@@ -1,19 +1,19 @@
-# Codex Usage Widget
+# Codex Vision
 
 <p align="center">
   <img src="docs/social-preview.png" alt="Codex 用量桌面小组件" width="760">
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Codex Usage Widget live quota screenshot" width="230">
-  <img src="docs/hover-screenshot.png" alt="Codex Usage Widget hover glass screenshot" width="230">
-  <img src="docs/waiting-screenshot.png" alt="Codex Usage Widget waiting for new Codex record screenshot" width="230">
+  <img src="docs/screenshot.png" alt="Codex Vision live quota screenshot" width="230">
+  <img src="docs/hover-screenshot.png" alt="Codex Vision hover glass screenshot" width="230">
+  <img src="docs/waiting-screenshot.png" alt="Codex Vision waiting for new Codex record screenshot" width="230">
 </p>
 
 <p align="center">
-  <strong>A polished desktop widget for checking your local Codex usage limits at a glance.</strong>
+  <strong>Usage with confidence.</strong>
   <br>
-  <strong>一个用于查看 Codex 7D 用量、套餐到期和剩余重置次数的精致桌面小组件。</strong>
+  <strong>用量有数，使用从容。</strong>
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
   </a>
 </p>
 
-Codex Usage Widget is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
+Codex Vision is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
 
 中文用户可以把它当成一个常驻桌面的 Codex 额度看板：不用打开网页，不用翻日志，直接看 7D 剩余用量、套餐到期时间和到期前剩余重置次数。
 
@@ -54,9 +54,9 @@ If this project helps you keep Codex usage visible, a GitHub Star helps more use
 
 Windows users can download the ready-to-run package from the latest release:
 
-[Download CodexUsageWidget-Windows.zip](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexUsageWidget-Windows.zip)
+[Download CodexVision-Windows.zip](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip)
 
-Unzip it, then double-click `CodexUsageWidget.exe`.
+Unzip it, then double-click `CodexVision.exe`.
 
 ## Why It Feels Good
 
@@ -99,9 +99,9 @@ It does not upload data and does not read or display your conversation content. 
 
 Recommended for most users:
 
-1. Download `CodexUsageWidget-Windows.zip` from the latest GitHub Release.
+1. Download `CodexVision-Windows.zip` from the latest GitHub Release.
 2. Unzip it.
-3. Double-click `CodexUsageWidget.exe`.
+3. Double-click `CodexVision.exe`.
 
 Optional:
 
@@ -133,7 +133,7 @@ Source-mode optional:
 build-windows.cmd
 ```
 
-The packaged app will be written to `dist\CodexUsageWidget\CodexUsageWidget.exe`, and the uploadable archive will be written to `dist\CodexUsageWidget-Windows.zip`.
+The packaged app will be written to `dist\CodexVision\CodexVision.exe`, and the uploadable archive will be written to `dist\CodexVision-Windows.zip`.
 
 ## macOS Quick Start
 

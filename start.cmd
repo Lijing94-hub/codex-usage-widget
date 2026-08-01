@@ -20,5 +20,5 @@ pause
 exit /b 1
 
 :run
-start "Codex Usage Widget" "%PY%" "%APP_DIR%codex_usage_widget.py"
+start "Codex Vision" "%PY%" "%APP_DIR%codex_usage_widget.py"
 exit /b 0

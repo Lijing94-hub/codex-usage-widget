@@ -26,7 +26,7 @@ Build the Windows archive:
 build-windows.cmd
 ```
 
-Upload `dist\CodexUsageWidget-Windows.zip` to the GitHub release.
+Upload `dist\CodexVision-Windows.zip` to the GitHub release.
 
 ## First Push
 

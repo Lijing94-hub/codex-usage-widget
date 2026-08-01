@@ -3,8 +3,8 @@ setlocal
 set "APP_DIR=%~dp0"
 set "BUILD_VENV=%APP_DIR%.venv-build"
 set "PY=%BUILD_VENV%\Scripts\python.exe"
-set "DIST_DIR=%APP_DIR%dist\CodexUsageWidget"
-set "ZIP_PATH=%APP_DIR%dist\CodexUsageWidget-Windows.zip"
+set "DIST_DIR=%APP_DIR%dist\CodexVision"
+set "ZIP_PATH=%APP_DIR%dist\CodexVision-Windows.zip"
 
 where py >nul 2>nul
 if errorlevel 1 (
@@ -27,7 +27,7 @@ if errorlevel 1 exit /b 1
   --noconfirm ^
   --clean ^
   --windowed ^
-  --name CodexUsageWidget ^
+  --name CodexVision ^
   --icon "%APP_DIR%assets\codex-usage.ico" ^
   --add-data "%APP_DIR%assets;assets" ^
   "%APP_DIR%codex_usage_widget.py"
@@ -42,5 +42,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '
 if errorlevel 1 exit /b 1
 
 echo Built:
-echo %DIST_DIR%\CodexUsageWidget.exe
+echo %DIST_DIR%\CodexVision.exe
 echo %ZIP_PATH%

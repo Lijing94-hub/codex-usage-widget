@@ -1,4 +1,4 @@
-# Codex Usage Widget for Mac
+# Codex Vision for Mac
 
 This package includes a simple macOS launcher so teammates can run the same widget without touching the Windows scripts.
 

@@ -16,6 +16,7 @@ Thumbs.db
 *.spec
 
 CodexUsageWidget/
+CodexVision/
 limit_sample.json
 widget.log
 

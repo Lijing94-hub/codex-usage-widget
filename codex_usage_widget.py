@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
     ImageTk = None
 
 
-APP_NAME = "Codex Usage Widget"
+APP_NAME = "Codex Vision"
 APP_VERSION = 4
 SINGLE_INSTANCE_MUTEX = "Local\\Lijing94.CodexUsageWidget.SingleInstance"
 _SINGLE_INSTANCE_HANDLE: int | None = None
@@ -108,8 +108,8 @@ BILLING_URLS = {
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
-        "app_name": "Codex Usage Widget",
-        "subtitle": "quota at a glance",
+        "app_name": "Codex Vision",
+        "subtitle": "Usage with confidence",
         "status_refreshing": "Refreshing",
         "status_unchanged": "No update",
         "status_cache": "Cached",
@@ -199,8 +199,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "note_failed": "Read failed temporarily",
     },
     "zh": {
-        "app_name": "Codex 用量小组件",
-        "subtitle": "额度一眼看清",
+        "app_name": "Codex Vision",
+        "subtitle": "用量有数，使用从容",
         "status_refreshing": "刷新中",
         "status_unchanged": "无新快照",
         "status_cache": "缓存",
@@ -1512,7 +1512,7 @@ class CardRenderer:
         muted = "#8E9AA8"
         self._draw_codex_mark(image, draw, 39, 47)
 
-        draw.text(self.xy(76, 28), "Codex Limit", font=self._display_font(19, True), fill=ink)
+        draw.text(self.xy(76, 28), "Codex Vision", font=self._display_font(19, True), fill=ink)
         draw.text(self.xy(76, 53), tr("subtitle"), font=self._font(10, True), fill=muted)
         pill_text = self._status_text(sample)
         status_color = self._status_color(sample)
