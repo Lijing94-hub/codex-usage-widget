@@ -42,6 +42,8 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
 
 APP_NAME = "Codex Usage Widget"
 APP_VERSION = 4
+SINGLE_INSTANCE_MUTEX = "Local\\Lijing94.CodexUsageWidget.SingleInstance"
+_SINGLE_INSTANCE_HANDLE: int | None = None
 
 
 def runtime_app_dir() -> pathlib.Path:
@@ -2638,6 +2640,38 @@ def set_window_icon(root: tk.Tk) -> None:
             root.iconbitmap(str(ICON_PATH))
 
 
+def acquire_single_instance() -> bool:
+    global _SINGLE_INSTANCE_HANDLE
+    if sys.platform != "win32":
+        return True
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)
+        if not handle:
+            return True
+        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            kernel32.CloseHandle(handle)
+            user32 = ctypes.windll.user32
+            existing = user32.FindWindowW(None, tr("app_name"))
+            if existing:
+                user32.ShowWindow(existing, 9)  # SW_RESTORE
+                user32.SetForegroundWindow(existing)
+            return False
+        _SINGLE_INSTANCE_HANDLE = handle
+        return True
+    except Exception as exc:
+        log_line(f"Single-instance guard unavailable: {exc}")
+        return True
+
+
+def release_single_instance() -> None:
+    global _SINGLE_INSTANCE_HANDLE
+    if sys.platform == "win32" and _SINGLE_INSTANCE_HANDLE:
+        with contextlib.suppress(Exception):
+            ctypes.windll.kernel32.CloseHandle(_SINGLE_INSTANCE_HANDLE)
+    _SINGLE_INSTANCE_HANDLE = None
+
+
 def run_app() -> int:
     if tk is None:
         print(tr("tk_missing"))
@@ -2645,6 +2679,8 @@ def run_app() -> int:
     if Image is None or ImageTk is None:
         print(tr("pillow_missing"))
         return 2
+    if not acquire_single_instance():
+        return 0
     set_dpi_awareness()
     config = load_config()
     try:
@@ -2662,6 +2698,8 @@ def run_app() -> int:
             with contextlib.suppress(Exception):
                 messagebox.showerror(tr("app_name"), tr("ui_crashed", path=LOG_PATH))
         return 1
+    finally:
+        release_single_instance()
 
 
 def write_session_event(codex_home: pathlib.Path, payload: dict[str, Any], timestamp: str = "2026-06-25T09:56:30.302Z") -> pathlib.Path:
