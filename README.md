@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <strong>Usage with confidence.</strong>
+  <strong>See clearly. Create freely.</strong>
   <br>
-  <strong>用量有数，使用从容。</strong>
+  <strong>清晰掌握，从容创作。</strong>
 </p>
 
 <p align="center">

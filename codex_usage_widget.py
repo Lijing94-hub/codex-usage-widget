@@ -119,7 +119,7 @@ BILLING_URLS = {
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
         "app_name": "Codex Vision",
-        "subtitle": "Usage with confidence",
+        "subtitle": "See clearly. Create freely.",
         "status_refreshing": "Refreshing",
         "status_unchanged": "No update",
         "status_cache": "Cached",
@@ -211,7 +211,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "zh": {
         "app_name": "Codex Vision",
-        "subtitle": "用量有数，使用从容",
+        "subtitle": "清晰掌握，从容创作",
         "status_refreshing": "刷新中",
         "status_unchanged": "无新快照",
         "status_cache": "缓存",
