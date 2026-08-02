@@ -1459,8 +1459,12 @@ def health_color(remaining: Any) -> str:
 
 
 class CardRenderer:
-    WIDTH = 304
-    HEIGHT = 536
+    DESIGN_WIDTH = 304
+    DESIGN_HEIGHT = 536
+    DISPLAY_SCALE = 0.9
+    WIDTH = round(DESIGN_WIDTH * DISPLAY_SCALE)
+    HEIGHT = round(DESIGN_HEIGHT * DISPLAY_SCALE)
+    CORNER_RADIUS = round(28 * DISPLAY_SCALE)
     SCALE = 2
     KEY = "#010203"
 
@@ -1476,7 +1480,7 @@ class CardRenderer:
             return None
         try:
             panel = Image.open(GLASS_PANEL_PATH).convert("RGBA")
-            expected = (self.WIDTH * self.SCALE, self.HEIGHT * self.SCALE)
+            expected = (self.DESIGN_WIDTH * self.SCALE, self.DESIGN_HEIGHT * self.SCALE)
             if panel.size != expected:
                 panel = panel.resize(expected, Image.Resampling.LANCZOS)
             return panel
@@ -1516,7 +1520,7 @@ class CardRenderer:
     ) -> Image.Image:
         sample = empty_sample() if sample is None else sample
         scale = self.SCALE
-        width, height = self.WIDTH * scale, self.HEIGHT * scale
+        width, height = self.DESIGN_WIDTH * scale, self.DESIGN_HEIGHT * scale
         image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         image = self._paint_acrylic_panel(image, hover=hover, native=native)
         draw = ImageDraw.Draw(image)
@@ -1546,7 +1550,7 @@ class CardRenderer:
         draw = ImageDraw.Draw(mask)
         draw.rounded_rectangle(
             (0, 0, mask_size[0] - 1, mask_size[1] - 1),
-            radius=28 * oversample,
+            radius=self.CORNER_RADIUS * oversample,
             fill=255,
         )
         mask = mask.resize(image.size, Image.Resampling.LANCZOS)
@@ -1985,52 +1989,31 @@ class CardRenderer:
 
         if expiry_source == "billing_required":
             expiry_value = tr("billing_required")
-            expiry_note = (
-                tr("billing_google")
-                if sample.get("billing_expiry_channel") == "google"
-                else tr("sync_plan_date")
-            )
         elif expiry_source == "active_without_expiry":
             account_label = tr("current_plan")
             expiry_value = plan
-            expiry_note = tr("active_now")
         elif expires_at:
             expires = dt.datetime.fromtimestamp(expires_at).astimezone()
             expiry_value = expires.strftime("%m/%d")
-            if expiry_source == "billing_expired":
-                expiry_note = tr("billing_expired", plan=plan)
-            elif expiry_source == "billing_confirmed":
-                days_left = (expires.date() - dt.datetime.now().astimezone().date()).days
-                expiry_note = (
-                    tr("billing_due_soon", plan=plan)
-                    if days_left <= 3
-                    else tr("billing_verified", plan=plan)
-                )
-            else:
-                expiry_note = f"{expires.strftime('%H:%M')} · {plan}"
         else:
             expiry_value = "--/--"
-            expiry_note = plan
 
         reset_value = tr("times_left", value=resets) if resets is not None else "--"
         draw.line(self.xy(158, 376, 158, 472), fill="#3B444C", width=self.sc(1))
-        reset_note = tr("codex_credits") if sample.get("resets_source") == "credits" else tr("weekly_cycle")
         columns = (
-            (40, 148, 47, account_label, expiry_value, expiry_note, "calendar"),
-            (188, 280, 195, tr("resets_left"), reset_value, reset_note, "cycle"),
+            (40, 148, 47, account_label, expiry_value, "calendar"),
+            (188, 280, 195, tr("resets_left"), reset_value, "cycle"),
         )
-        for x1, x2, icon_x, label, value, note, icon in columns:
-            icon_y = 383
+        for x1, x2, icon_x, label, value, icon in columns:
+            icon_y = 390
             if icon == "calendar":
                 self._draw_clock_icon(draw, icon_x, icon_y, "#69B9F5")
             else:
                 self._draw_refresh_icon(draw, icon_x, icon_y, "#69DE91")
-            draw.text(self.xy(x1, 398), label, font=self._font(11, True), fill="#919CA8")
+            draw.text(self.xy(x1, 405), label, font=self._font(11, True), fill="#919CA8")
             value_font = self._font(34, True) if any(ord(char) > 127 for char in value) else self._display_font(34, True)
             value = fit_text(draw, value, value_font, self.sc(x2 - x1), suffix="")
-            draw.text(self.xy(x1, 418), value, font=value_font, fill="#F8FAFC")
-            note = fit_text(draw, note, self._font(10, True), self.sc(x2 - x1), suffix="")
-            draw.text(self.xy(x1, 459), note, font=self._font(10, True), fill="#748291")
+            draw.text(self.xy(x1, 427), value, font=value_font, fill="#F8FAFC")
 
     def _draw_progress(self, draw: ImageDraw.ImageDraw, x1: int, y1: int, x2: int, y2: int, ratio: float, color: str, active: bool) -> None:
         radius = self.sc((y2 - y1) / 2)
@@ -2244,7 +2227,7 @@ class UsageWidget:
             with contextlib.suppress(Exception):
                 self.root.wm_attributes("-transparentcolor", self.KEY)
             apply_windows_glass(self.root)
-        apply_rounded_window_region(self.root, self.WIDTH, self.HEIGHT, 28)
+        apply_rounded_window_region(self.root, self.WIDTH, self.HEIGHT, CardRenderer.CORNER_RADIUS)
 
     def _set_image(self, sample: dict[str, Any]) -> None:
         self.current_sample = sample
@@ -3236,7 +3219,10 @@ class ReaderTests(unittest.TestCase):
         sample["windows"] = normalize_rate_limits(example_rate_limits())
         renderer = CardRenderer()
         self.assertIsNotNone(renderer.glass_panel)
-        self.assertEqual(renderer.glass_panel.size, (CardRenderer.WIDTH * CardRenderer.SCALE, CardRenderer.HEIGHT * CardRenderer.SCALE))
+        self.assertEqual(
+            renderer.glass_panel.size,
+            (CardRenderer.DESIGN_WIDTH * CardRenderer.SCALE, CardRenderer.DESIGN_HEIGHT * CardRenderer.SCALE),
+        )
         image = renderer.render(sample)
         self.assertEqual(image.size, (CardRenderer.WIDTH, CardRenderer.HEIGHT))
         self.assertEqual(image.getpixel((0, 0)), (1, 2, 3))
