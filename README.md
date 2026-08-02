@@ -62,12 +62,12 @@ Unzip it, then double-click `CodexVision.exe`.
 
 - Beautiful vertical desktop widget that can live near the edge of your screen
 - Smooth Image-2 glass material integrated into the real renderer, not used as a static mockup
-- Real local Codex limit snapshots, not mocked counters
+- Direct Codex rate-limit sync without starting a task, with local snapshots as a resilient fallback
 - Big remaining-percentage typography for quick scanning
 - Locally confirmed plan expiration and estimated resets remaining before expiration
 - Green remaining segment and orange used segment for instant visual understanding
 - Hover glass mode, so you can inspect content underneath without fully hiding quota data
-- Manual refresh, auto refresh, always-on-top mode, and drag-to-position
+- Background sync every 30 seconds, instant manual refresh, always-on-top mode, and drag-to-position
 - Cache fallback when Codex has not written a fresh snapshot yet
 - Clear reset/waiting state instead of disappearing or showing misleading values
 - System language detection with Simplified Chinese and English UI text

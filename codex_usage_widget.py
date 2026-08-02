@@ -12,7 +12,9 @@ import math
 import os
 import pathlib
 import queue
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import threading
@@ -85,8 +87,16 @@ LOG_PATH = DATA_DIR / "widget.log"
 FIVE_HOUR_MINUTES = 5 * 60
 WEEKLY_MINUTES = 7 * 24 * 60
 DEFAULT_REFRESH_SECONDS = 6
+APP_SERVER_POLL_SECONDS = 30
+APP_SERVER_TIMEOUT_SECONDS = 8
 SESSION_TAIL_BYTES = 768 * 1024
 MAX_SESSION_FILES = 120
+
+_APP_SERVER_CACHE_LOCK = threading.Lock()
+_APP_SERVER_CACHE: dict[str, Any] = {
+    "checked_at": 0.0,
+    "result": None,
+}
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "refresh_seconds": DEFAULT_REFRESH_SECONDS,
@@ -193,6 +203,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "note_format_changed": "Codex local record format may have changed",
         "note_stale": "A limit window has reached its reset point. It will update after your next Codex activity",
         "note_local": "From local Codex limit records",
+        "note_direct": "Synced directly from Codex",
         "note_cache": "Showing cached data",
         "note_cache_fallback": "Live read failed, showing last successful data: {error}",
         "note_cache_no_new": "No fresh snapshot yet, showing last successful data",
@@ -284,6 +295,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "note_format_changed": "Codex 记录格式可能更新了",
         "note_stale": "额度窗口已经到过重置点，继续一次 Codex 后会更新",
         "note_local": "来自 Codex 本地额度记录",
+        "note_direct": "Codex 服务实时同步",
         "note_cache": "显示缓存数据",
         "note_cache_fallback": "当前读取失败，显示上次成功数据：{error}",
         "note_cache_no_new": "暂时没读到新快照，显示上次成功数据",
@@ -556,6 +568,16 @@ def resets_before_expiry(
 
 
 def resets_from_credits(raw: dict[str, Any]) -> int | None:
+    reset_credits = raw.get("rate_limit_reset_credits") or raw.get("rateLimitResetCredits")
+    if isinstance(reset_credits, dict):
+        available = clean_int(
+            reset_credits.get("available_count")
+            if "available_count" in reset_credits
+            else reset_credits.get("availableCount"),
+            minimum=0,
+        )
+        if available is not None:
+            return available
     credits = raw.get("credits")
     if not isinstance(credits, dict) or credits.get("unlimited") is True:
         return None
@@ -722,6 +744,7 @@ def window_minutes_from(data: dict[str, Any]) -> int | None:
         data.get("window_minutes")
         or data.get("limit_window_minutes")
         or data.get("rolling_window_minutes")
+        or data.get("windowDurationMins")
     )
     if minutes is not None and minutes > 0:
         return int(round(minutes))
@@ -736,12 +759,25 @@ def window_minutes_from(data: dict[str, Any]) -> int | None:
 
 
 def reset_timestamp_from(data: dict[str, Any]) -> float | None:
-    return parse_event_timestamp(data.get("resets_at") or data.get("reset_at") or data.get("resetAt"))
+    return parse_event_timestamp(
+        data.get("resets_at")
+        or data.get("reset_at")
+        or data.get("resetsAt")
+        or data.get("resetAt")
+    )
 
 
 def normalize_window(data: dict[str, Any], label: str, now: float | None = None) -> dict[str, Any] | None:
     minutes = window_minutes_from(data)
-    used = clean_float(data.get("used_percent") or data.get("usage_percent") or data.get("usedPercentage"))
+    used = clean_float(
+        data.get("used_percent")
+        if "used_percent" in data
+        else data.get("usage_percent")
+        if "usage_percent" in data
+        else data.get("usedPercentage")
+        if "usedPercentage" in data
+        else data.get("usedPercent")
+    )
     reset_at = reset_timestamp_from(data)
     if minutes is None and used is None and reset_at is None:
         return None
@@ -820,6 +856,171 @@ def sample_has_windows(sample: dict[str, Any]) -> bool:
     return any(isinstance(item, dict) and item.get("available") for item in windows.values())
 
 
+def resolve_codex_app_server_executable() -> pathlib.Path | None:
+    override = os.environ.get("CODEX_CLI_PATH")
+    if override:
+        path = pathlib.Path(override).expanduser()
+        if path.is_file():
+            return path
+
+    if sys.platform == "win32" and os.environ.get("APPDATA"):
+        npm_root = pathlib.Path(os.environ["APPDATA"]) / "npm" / "node_modules" / "@openai" / "codex"
+        candidates = list(npm_root.glob("node_modules/@openai/codex-win32-*/vendor/*/bin/codex.exe"))
+        candidates.extend(npm_root.glob("vendor/*/bin/codex.exe"))
+        candidates = [path for path in candidates if path.is_file()]
+        if candidates:
+            return max(candidates, key=lambda path: path.stat().st_mtime)
+
+    executable = shutil.which("codex.exe" if sys.platform == "win32" else "codex")
+    if executable and pathlib.Path(executable).suffix.lower() not in {".cmd", ".ps1"}:
+        return pathlib.Path(executable)
+    return None
+
+
+def fetch_app_server_rate_limits(
+    codex_home: pathlib.Path,
+    timeout: float = APP_SERVER_TIMEOUT_SECONDS,
+) -> dict[str, Any] | None:
+    executable = resolve_codex_app_server_executable()
+    if executable is None:
+        return None
+
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+    proc: subprocess.Popen[str] | None = None
+    messages: queue.Queue[str] = queue.Queue()
+
+    try:
+        proc = subprocess.Popen(
+            [str(executable), "app-server"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            env=env,
+            creationflags=creation_flags,
+        )
+        if proc.stdin is None or proc.stdout is None:
+            return None
+
+        def read_lines() -> None:
+            assert proc is not None and proc.stdout is not None
+            for line in proc.stdout:
+                messages.put(line)
+
+        threading.Thread(target=read_lines, daemon=True).start()
+
+        def send(message: dict[str, Any]) -> None:
+            assert proc is not None and proc.stdin is not None
+            proc.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
+            proc.stdin.flush()
+
+        def wait_for(request_id: int, deadline: float) -> dict[str, Any] | None:
+            while time.monotonic() < deadline:
+                try:
+                    message = json.loads(messages.get(timeout=0.25))
+                except queue.Empty:
+                    if proc is not None and proc.poll() is not None:
+                        return None
+                    continue
+                except Exception:
+                    continue
+                if isinstance(message, dict) and message.get("id") == request_id:
+                    return message
+            return None
+
+        deadline = time.monotonic() + max(2.0, timeout)
+        send({
+            "method": "initialize",
+            "id": 1,
+            "params": {
+                "clientInfo": {
+                    "name": "codex_vision",
+                    "title": "Codex Vision",
+                    "version": str(APP_VERSION),
+                }
+            },
+        })
+        initialized = wait_for(1, deadline)
+        if not initialized or initialized.get("error"):
+            return None
+        send({"method": "initialized", "params": {}})
+        send({"method": "account/rateLimits/read", "id": 2, "params": {}})
+        response = wait_for(2, deadline)
+        result = response.get("result") if isinstance(response, dict) else None
+        if not isinstance(result, dict):
+            return None
+
+        rate_limits = result.get("rateLimits")
+        by_limit_id = result.get("rateLimitsByLimitId")
+        if isinstance(by_limit_id, dict):
+            rate_limits = by_limit_id.get("codex") or rate_limits
+        if not isinstance(rate_limits, dict):
+            return None
+
+        raw = dict(rate_limits)
+        raw["limit_id"] = raw.get("limitId") or raw.get("limit_id")
+        raw["plan_type"] = raw.get("planType") or raw.get("plan_type")
+        raw["rate_limit_reached_type"] = raw.get("rateLimitReachedType") or raw.get("rate_limit_reached_type")
+        reset_credits = result.get("rateLimitResetCredits")
+        if isinstance(reset_credits, dict):
+            raw["rate_limit_reset_credits"] = reset_credits
+        credits = raw.get("credits")
+        if isinstance(credits, dict):
+            raw["credits"] = dict(credits)
+            raw["credits"].setdefault("has_credits", credits.get("hasCredits"))
+        return {
+            "timestamp": now_ts(),
+            "path": "codex-app-server://account/rateLimits/read",
+            "rate_limits": raw,
+        }
+    except Exception as exc:
+        log_line(f"Codex app-server sync failed: {exc}")
+        return None
+    finally:
+        if proc is not None:
+            with contextlib.suppress(Exception):
+                if proc.stdin is not None:
+                    proc.stdin.close()
+            with contextlib.suppress(Exception):
+                proc.terminate()
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=1.5)
+            if proc.poll() is None:
+                with contextlib.suppress(Exception):
+                    proc.kill()
+
+
+def get_app_server_rate_limits(
+    codex_home: pathlib.Path,
+    force: bool = False,
+) -> dict[str, Any] | None:
+    current = time.monotonic()
+    cached = _APP_SERVER_CACHE.get("result")
+    checked_at = clean_float(_APP_SERVER_CACHE.get("checked_at")) or 0.0
+    if not force and cached is not None and current - checked_at < APP_SERVER_POLL_SECONDS:
+        return cached
+
+    with _APP_SERVER_CACHE_LOCK:
+        current = time.monotonic()
+        cached = _APP_SERVER_CACHE.get("result")
+        checked_at = clean_float(_APP_SERVER_CACHE.get("checked_at")) or 0.0
+        if not force and cached is not None and current - checked_at < APP_SERVER_POLL_SECONDS:
+            return cached
+        result = fetch_app_server_rate_limits(codex_home)
+        _APP_SERVER_CACHE["checked_at"] = time.monotonic()
+        if result is not None:
+            _APP_SERVER_CACHE["result"] = result
+            return result
+        if cached is not None and current - checked_at < APP_SERVER_POLL_SECONDS * 2:
+            return cached
+        return None
+
+
 class CodexRateLimitReader:
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -873,11 +1074,22 @@ class CodexRateLimitReader:
             sample["note"] = tr("note_format_changed")
         elif stale_count:
             sample["note"] = tr("note_stale")
+        elif str(latest.get("path") or "").startswith("codex-app-server://"):
+            sample["note"] = tr("note_direct")
         else:
             sample["note"] = tr("note_local")
         return sample
 
     def _find_latest_rate_limits(self) -> dict[str, Any] | None:
+        default_home = codex_home_from_config({})
+        uses_default_home = os.path.normcase(os.path.abspath(self.codex_home)) == os.path.normcase(os.path.abspath(default_home))
+        if uses_default_home:
+            live = get_app_server_rate_limits(
+                self.codex_home,
+                force=bool(self.config.get("_force_live_sync")),
+            )
+            if live is not None:
+                return live
         logs_candidate = self._find_latest_rate_limits_in_logs()
         sessions_candidate = self._find_latest_rate_limits_in_sessions(
             newer_than=float(logs_candidate.get("timestamp") or 0) if logs_candidate else 0.0
@@ -2336,7 +2548,10 @@ class UsageWidget:
 
         def worker() -> None:
             try:
-                sample = self.snapshot_func(dict(self.config))
+                request_config = dict(self.config)
+                if force:
+                    request_config["_force_live_sync"] = True
+                sample = self.snapshot_func(request_config)
             except Exception:
                 log_line("Worker crashed:\n" + traceback.format_exc())
                 sample = read_snapshot(dict(self.config), cache=True)
@@ -2789,6 +3004,32 @@ def example_rate_limits(reset_offset: int = 3600) -> dict[str, Any]:
 
 
 class ReaderTests(unittest.TestCase):
+    def test_normalizes_live_app_server_weekly_window(self) -> None:
+        reset = int(now_ts()) + WEEKLY_MINUTES * 60
+        windows = normalize_rate_limits({
+            "primary": {
+                "usedPercent": 0,
+                "windowDurationMins": WEEKLY_MINUTES,
+                "resetsAt": reset,
+            },
+            "secondary": None,
+        })
+        self.assertFalse(windows["five_hour"]["available"])
+        self.assertTrue(windows["five_hour"]["not_offered"])
+        self.assertTrue(windows["weekly"]["available"])
+        self.assertEqual(windows["weekly"]["used_percent"], 0.0)
+        self.assertEqual(windows["weekly"]["remaining_percent"], 100.0)
+        self.assertEqual(windows["weekly"]["reset_at"], reset)
+
+    def test_uses_authoritative_app_server_reset_credit_count(self) -> None:
+        self.assertEqual(
+            resets_from_credits({
+                "rate_limit_reset_credits": {"availableCount": 0},
+                "credits": {"balance": "2"},
+            }),
+            0,
+        )
+
     def test_extracts_five_hour_and_weekly_remaining(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             home = pathlib.Path(td) / ".codex"

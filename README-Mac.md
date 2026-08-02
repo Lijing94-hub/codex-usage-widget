@@ -17,7 +17,7 @@ The first launch creates a local `.venv` folder and installs Pillow. Later launc
 
 ## Data
 
-The widget reads local files under `~/.codex` and displays:
+The widget queries the authenticated local Codex app-server and falls back to files under `~/.codex`. It displays:
 
 - 7-day remaining quota
 - Plan expiration confirmed from ChatGPT, Apple, or Google Play billing
