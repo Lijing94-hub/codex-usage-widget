@@ -1,12 +1,20 @@
-name: Tests
+name: Quality
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  windows-quality:
     runs-on: windows-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -16,9 +24,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Static checks
+        run: |
+          python -m ruff check codex_usage_widget.py tools/generate_docs_assets.py
+          python -m py_compile codex_usage_widget.py tools/generate_docs_assets.py
 
       - name: Run tests
         run: python codex_usage_widget.py --test --include-ui
+
+      - name: Verify generated screenshots
+        shell: pwsh
+        run: |
+          python tools/generate_docs_assets.py
+          git diff --exit-code -- `
+            docs/screenshot.png `
+            docs/hover-screenshot.png `
+            docs/waiting-screenshot.png `
+            docs/english-screenshot.png `
+            docs/social-preview.png

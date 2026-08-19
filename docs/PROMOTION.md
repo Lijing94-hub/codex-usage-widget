@@ -1,67 +1,45 @@
-# 中文推广包
+# Codex Vision 宣传素材
 
-Repository:
+项目地址：<https://github.com/Lijing94-hub/codex-usage-widget>
 
-https://github.com/Lijing94-hub/codex-usage-widget
+Windows 下载：<https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip>
 
-Windows direct download:
+朋友圈海报：[`moments-poster.png`](moments-poster.png)
 
-https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip
+## 正式发布文案
 
-## 中文短文案
+最近完成了一个自己的 Windows 小产品：**Codex Vision**。
 
-我做了一个 Codex 桌面用量小组件：Codex Vision。
+它把 Codex 的 7D 周额度、下次重置、套餐到期时间和剩余重置次数放在桌面上。无需打开网页，也不用先启动一个 Codex 任务，额度变化会自动同步；实时读取暂时不可用时，仍会保留最后一次有效数据，不会突然消失。
 
-它可以直接在桌面显示 Codex 的 7D 用量、套餐到期时间和到期前剩余重置次数，支持 Windows / macOS，数据只读取本地 Codex 文件，不上传服务器。界面把 Image-2 生成的石墨玻璃材质真正集成进程序，并配合 Liquid Glass 控件，支持悬停透明、自动刷新、手动刷新和系统语言适配。
+我为它做了 Windows 毛玻璃界面、悬停半透明、中英文自适应和任务栏隐藏。数据在本机处理，项目没有遥测、账号系统或自建服务器。
 
-如果你经常用 Codex，欢迎试试。觉得有用的话，帮我点个 GitHub Star 支持一下：
+目前只做 Windows 10/11，代码和安装包都已经发布到 GitHub。欢迎体验，也欢迎给我真实反馈：
 
-https://github.com/Lijing94-hub/codex-usage-widget
+<https://github.com/Lijing94-hub/codex-usage-widget>
 
-## 中文极简版
+## 极简版
 
-我做了一个 Codex 桌面小组件，可以直接看 7D 用量、套餐到期和剩余重置次数，Windows 和 macOS 都能用，本地读取不上传数据，界面是毛玻璃风格。
+我做了一个 Windows 桌面小组件：**Codex Vision**。
 
-欢迎帮我点个 GitHub Star：
+7D 周额度、套餐到期和重置次数，一眼看清；自动同步，本地优先，不占任务栏。
 
-https://github.com/Lijing94-hub/codex-usage-widget
+项目与下载：<https://github.com/Lijing94-hub/codex-usage-widget>
 
 ## 发给朋友
 
-我最近做了个小作品，叫 Codex Vision。它是一个桌面小组件，用来直接看 Codex 的 7D 用量、套餐到期和剩余重置次数，还支持 Windows / macOS。
+这是我最近做的 Windows 小产品 Codex Vision，用来在桌面查看 Codex 周额度、套餐日期和重置次数。项目是开源的，觉得有用的话欢迎试用并给我提意见：
 
-项目地址在这里，方便的话帮我点个 Star：
+<https://github.com/Lijing94-hub/codex-usage-widget>
 
-https://github.com/Lijing94-hub/codex-usage-widget
+## English
 
-## 朋友圈版本
+I built **Codex Vision**, a focused Windows desktop widget for Codex weekly usage, plan expiration and reset credits.
 
-最近做了个 Codex 桌面小组件，可以直接在桌面看 7D 用量、套餐到期和剩余重置次数，支持 Windows / macOS，本地读取，不上传数据。
+It syncs through the locally installed Codex runtime, falls back to local rate-limit records, keeps the last valid snapshot visible, and stays out of the taskbar. The project has no telemetry, account system or hosted backend.
 
-做了毛玻璃界面、自动刷新、悬停透明和中英文适配。常用 Codex 的朋友应该会比较需要。
+Download and source: <https://github.com/Lijing94-hub/codex-usage-widget>
 
-项目放 GitHub 了，欢迎帮我点个 Star：
+## Star 说明
 
-https://github.com/Lijing94-hub/codex-usage-widget
-
-## 去哪里发
-
-- 朋友圈：配竖版 Image-2 海报 `docs/moments-poster.png`
-- 微信技术群：用短中文版本，配 `docs/social-preview.png`
-- 同事或朋友：用 Friend Message，语气更自然
-- V2EX / 即刻 / 掘金 / 小红书：重点说“本地读取、不上传数据、直接看 7D 与套餐周期”
-- GitHub Profile README：把项目放到 pinned repositories
-
-## 英文备用版
-
-I built Codex Vision, a small desktop widget for checking Codex 7-day usage, plan expiration, and estimated resets remaining at a glance.
-
-It supports Windows and macOS, reads local Codex files only, and does not upload your data. The UI uses a compact dark acrylic/glass design with hover translucency, auto refresh, manual refresh, and system language detection.
-
-If you use Codex often, I would love your feedback. A GitHub Star also helps more people discover it:
-
-https://github.com/Lijing94-hub/codex-usage-widget
-
-## 点 Star 说明
-
-Open the repository, sign in to GitHub, then click the `Star` button near the top of the page. When it becomes `Starred`, it worked.
+打开项目主页并登录 GitHub，点击页面右上方的 **Star**。变为 **Starred** 即表示成功。

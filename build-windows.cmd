@@ -6,6 +6,12 @@ set "PY=%BUILD_VENV%\Scripts\python.exe"
 set "DIST_DIR=%APP_DIR%dist\CodexVision"
 set "ZIP_PATH=%APP_DIR%dist\CodexVision-Windows.zip"
 
+tasklist /FI "IMAGENAME eq CodexVision.exe" 2>nul | find /I "CodexVision.exe" >nul
+if not errorlevel 1 (
+  echo Codex Vision is running. Close it before rebuilding the Windows package.
+  exit /b 1
+)
+
 where py >nul 2>nul
 if errorlevel 1 (
   echo Could not find the Python launcher. Install Python 3.10+ first.
@@ -17,10 +23,16 @@ if not exist "%PY%" (
   if errorlevel 1 exit /b 1
 )
 
-"%PY%" -m pip install --upgrade pip
+"%PY%" -m pip install --disable-pip-version-check -r "%APP_DIR%requirements-dev.txt"
 if errorlevel 1 exit /b 1
 
-"%PY%" -m pip install -r "%APP_DIR%requirements-dev.txt"
+"%PY%" -m ruff check "%APP_DIR%codex_usage_widget.py" "%APP_DIR%tools\generate_docs_assets.py"
+if errorlevel 1 exit /b 1
+
+"%PY%" -m py_compile "%APP_DIR%codex_usage_widget.py" "%APP_DIR%tools\generate_docs_assets.py"
+if errorlevel 1 exit /b 1
+
+"%PY%" "%APP_DIR%codex_usage_widget.py" --test --include-ui
 if errorlevel 1 exit /b 1
 
 "%PY%" -m PyInstaller ^
@@ -29,6 +41,7 @@ if errorlevel 1 exit /b 1
   --windowed ^
   --name CodexVision ^
   --icon "%APP_DIR%assets\codex-usage.ico" ^
+  --version-file "%APP_DIR%assets\windows-version-info.txt" ^
   --add-data "%APP_DIR%assets;assets" ^
   "%APP_DIR%codex_usage_widget.py"
 if errorlevel 1 exit /b 1

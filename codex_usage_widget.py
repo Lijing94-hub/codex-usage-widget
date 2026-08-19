@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import argparse
@@ -6,6 +5,7 @@ import base64
 import contextlib
 import ctypes
 import datetime as dt
+import io
 import json
 import locale
 import math
@@ -22,7 +22,9 @@ import time
 import traceback
 import unittest
 import webbrowser
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
+from unittest import mock
 
 try:
     import tkinter as tk
@@ -44,6 +46,7 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
 
 APP_NAME = "Codex Vision"
 APP_VERSION = 4
+APP_RELEASE_VERSION = "1.0.0"
 SINGLE_INSTANCE_MUTEX = "Local\\Lijing94.CodexUsageWidget.SingleInstance"
 _SINGLE_INSTANCE_HANDLE: int | None = None
 
@@ -72,8 +75,6 @@ GLASS_PANEL_PATH = ASSET_DIR / "image2-glass-panel.png"
 
 
 def default_data_dir() -> pathlib.Path:
-    if sys.platform == "darwin":
-        return pathlib.Path.home() / "Library" / "Application Support" / "CodexUsageWidget"
     if os.environ.get("APPDATA"):
         return pathlib.Path(os.environ["APPDATA"]) / "CodexUsageWidget"
     return APP_DIR / "CodexUsageWidget"
@@ -93,6 +94,7 @@ SESSION_TAIL_BYTES = 768 * 1024
 MAX_SESSION_FILES = 120
 
 _APP_SERVER_CACHE_LOCK = threading.Lock()
+_JSON_WRITE_LOCK = threading.RLock()
 _APP_SERVER_CACHE: dict[str, Any] = {
     "checked_at": 0.0,
     "result": None,
@@ -155,7 +157,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "billing_saved": "Plan date confirmed",
         "billing_required": "Confirm date",
         "billing_google": "Google Play billing",
-        "times_left": "{value} left",
+        "times_left": "{value}",
         "used": "Used",
         "waiting": "Waiting",
         "waiting_snapshot": "Waiting snapshot",
@@ -192,6 +194,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "manual_unchanged": "Refresh finished, but no new limit snapshot was found",
         "tk_missing": "Cannot start window UI: tkinter is unavailable.",
         "pillow_missing": "Cannot start window UI: Pillow is unavailable.",
+        "windows_only": "Codex Vision supports Windows 10 and Windows 11 only.",
         "ui_crashed": "Widget failed to start. Log file:\n{path}",
         "arg_test": "Run self tests",
         "arg_include_ui": "Include UI smoke test",
@@ -284,6 +287,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "manual_unchanged": "刷新完成，但没有新的额度快照",
         "tk_missing": "无法启动窗口组件：tkinter 不可用。",
         "pillow_missing": "无法启动窗口组件：Pillow 不可用。",
+        "windows_only": "Codex Vision 仅支持 Windows 10 和 Windows 11。",
         "ui_crashed": "小组件启动失败，日志在：\n{path}",
         "arg_test": "运行自测",
         "arg_include_ui": "自测时包含窗口烟雾测试",
@@ -356,10 +360,20 @@ def load_json(path: pathlib.Path, default: Any) -> Any:
 
 
 def atomic_write_json(path: pathlib.Path, data: Any) -> None:
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    with _JSON_WRITE_LOCK:
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        tmp = pathlib.Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        finally:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
 
 
 def clean_int(value: Any, minimum: int | None = None, maximum: int | None = None) -> int | None:
@@ -863,7 +877,7 @@ def resolve_codex_app_server_executable() -> pathlib.Path | None:
         if path.is_file():
             return path
 
-    if sys.platform == "win32" and os.environ.get("APPDATA"):
+    if os.environ.get("APPDATA"):
         npm_root = pathlib.Path(os.environ["APPDATA"]) / "npm" / "node_modules" / "@openai" / "codex"
         candidates = list(npm_root.glob("node_modules/@openai/codex-win32-*/vendor/*/bin/codex.exe"))
         candidates.extend(npm_root.glob("vendor/*/bin/codex.exe"))
@@ -871,7 +885,7 @@ def resolve_codex_app_server_executable() -> pathlib.Path | None:
         if candidates:
             return max(candidates, key=lambda path: path.stat().st_mtime)
 
-    executable = shutil.which("codex.exe" if sys.platform == "win32" else "codex")
+    executable = shutil.which("codex.exe")
     if executable and pathlib.Path(executable).suffix.lower() not in {".cmd", ".ps1"}:
         return pathlib.Path(executable)
     return None
@@ -887,7 +901,7 @@ def fetch_app_server_rate_limits(
 
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
-    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     proc: subprocess.Popen[str] | None = None
     messages: queue.Queue[str] = queue.Queue()
 
@@ -1002,14 +1016,14 @@ def get_app_server_rate_limits(
     current = time.monotonic()
     cached = _APP_SERVER_CACHE.get("result")
     checked_at = clean_float(_APP_SERVER_CACHE.get("checked_at")) or 0.0
-    if not force and cached is not None and current - checked_at < APP_SERVER_POLL_SECONDS:
+    if not force and checked_at > 0 and current - checked_at < APP_SERVER_POLL_SECONDS:
         return cached
 
     with _APP_SERVER_CACHE_LOCK:
         current = time.monotonic()
         cached = _APP_SERVER_CACHE.get("result")
         checked_at = clean_float(_APP_SERVER_CACHE.get("checked_at")) or 0.0
-        if not force and cached is not None and current - checked_at < APP_SERVER_POLL_SECONDS:
+        if not force and checked_at > 0 and current - checked_at < APP_SERVER_POLL_SECONDS:
             return cached
         result = fetch_app_server_rate_limits(codex_home)
         _APP_SERVER_CACHE["checked_at"] = time.monotonic()
@@ -1296,6 +1310,64 @@ def windows_toplevel_handle(root: tk.Tk) -> int | None:
         return None
 
 
+GWL_EXSTYLE = -20
+WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_APPWINDOW = 0x00040000
+
+
+def tool_window_ex_style(current_style: int) -> int:
+    """Keep the widget off the taskbar and Alt+Tab without changing other window behavior."""
+    return (int(current_style) | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+
+
+def apply_windows_tool_window(root: tk.Tk) -> bool:
+    """Apply Windows' documented taskbar-free tool-window style to the widget."""
+    if sys.platform != "win32":
+        return False
+    try:
+        # Let Tk keep its own bookkeeping in sync with the native style. Without this,
+        # Tk can restore WS_EX_APPWINDOW when it maps an initially hidden root window.
+        with contextlib.suppress(Exception):
+            root.wm_attributes("-toolwindow", True)
+        root.update_idletasks()
+        hwnd = windows_toplevel_handle(root)
+        if hwnd is None:
+            return False
+        user32 = ctypes.windll.user32
+        pointer_sized_long = ctypes.c_longlong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_long
+        get_style = user32.GetWindowLongPtrW if ctypes.sizeof(ctypes.c_void_p) == 8 else user32.GetWindowLongW
+        set_style = user32.SetWindowLongPtrW if ctypes.sizeof(ctypes.c_void_p) == 8 else user32.SetWindowLongW
+        get_style.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        get_style.restype = pointer_sized_long
+        set_style.argtypes = [ctypes.c_void_p, ctypes.c_int, pointer_sized_long]
+        set_style.restype = pointer_sized_long
+
+        current = int(get_style(ctypes.c_void_p(hwnd), GWL_EXSTYLE))
+        if current & WS_EX_TOOLWINDOW and not current & WS_EX_APPWINDOW:
+            return True
+
+        # Windows only removes an existing taskbar button after the window is hidden.
+        root.withdraw()
+        set_style(ctypes.c_void_p(hwnd), GWL_EXSTYLE, pointer_sized_long(tool_window_ex_style(current)))
+        user32.SetWindowPos(
+            ctypes.c_void_p(hwnd),
+            ctypes.c_void_p(0),
+            0,
+            0,
+            0,
+            0,
+            0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020,  # no move/size/z-order/activate, refresh frame
+        )
+        root.deiconify()
+        applied = int(get_style(ctypes.c_void_p(hwnd), GWL_EXSTYLE))
+        return bool(applied & WS_EX_TOOLWINDOW) and not bool(applied & WS_EX_APPWINDOW)
+    except Exception as exc:
+        log_line(f"Failed to hide widget from Windows taskbar: {exc}")
+        with contextlib.suppress(Exception):
+            root.deiconify()
+        return False
+
+
 def apply_windows_glass(root: tk.Tk) -> bool:
     if sys.platform != "win32":
         return False
@@ -1380,13 +1452,7 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
     if ImageFont is None:
         raise RuntimeError("Pillow is unavailable")
     windir = pathlib.Path(os.environ.get("WINDIR", r"C:\Windows"))
-    mac_fonts = pathlib.Path("/System/Library/Fonts")
-    mac_supplemental = pathlib.Path("/System/Library/Fonts/Supplemental")
     candidates = [
-        mac_fonts / ("PingFang.ttc"),
-        mac_supplemental / ("Arial Unicode.ttf"),
-        mac_supplemental / ("Arial Bold.ttf" if bold else "Arial.ttf"),
-        pathlib.Path("/Library/Fonts") / ("Arial Unicode.ttf"),
         windir / "Fonts" / ("msyhbd.ttc" if bold else "msyh.ttc"),
         windir / "Fonts" / ("segoeuib.ttf" if bold else "segoeui.ttf"),
         windir / "Fonts" / ("arialbd.ttf" if bold else "arial.ttf"),
@@ -1402,10 +1468,7 @@ def load_display_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont |
     if ImageFont is None:
         raise RuntimeError("Pillow is unavailable")
     windir = pathlib.Path(os.environ.get("WINDIR", r"C:\Windows"))
-    mac_fonts = pathlib.Path("/System/Library/Fonts")
     candidates = [
-        mac_fonts / ("SFNS.ttf"),
-        mac_fonts / ("SFNSDisplay.ttf"),
         windir / "Fonts" / ("seguisb.ttf" if bold else "SegUIVar.ttf"),
         windir / "Fonts" / ("segoeuib.ttf" if bold else "segoeui.ttf"),
     ]
@@ -1759,7 +1822,6 @@ class CardRenderer:
             return tr("status_cache")
         if not sample.get("ok"):
             return tr("status_waiting")
-        windows = sample.get("windows") or {}
         return tr("status_live")
 
     def _status_color(self, sample: dict[str, Any]) -> str:
@@ -1812,19 +1874,13 @@ class CardRenderer:
             draw.ellipse(self.xy(x - radius, y - radius, x + radius, y + radius), fill=color)
 
     def _draw_refresh_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-        fill = "#35414B" if sys.platform != "darwin" else "#303741"
+        fill = "#35414B"
         outline = "#6A7A88"
         draw.ellipse(self.xy(cx - 16, cy - 16, cx + 16, cy + 16), fill=fill, outline=outline, width=self.sc(1))
         draw.arc(self.xy(cx - 14, cy - 14, cx + 14, cy + 14), 205, 330, fill="#A4B2BF", width=self.sc(1))
         self._draw_refresh_icon(draw, cx, cy, "#F0F4F8")
 
     def _draw_close_control(self, draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-        if sys.platform == "darwin":
-            draw.ellipse(self.xy(cx - 10, cy - 10, cx + 10, cy + 10), fill="#FF5F57")
-            draw.ellipse(self.xy(cx - 10, cy - 10, cx + 10, cy + 10), outline="#D64D47", width=self.sc(1))
-            draw.line([self.xy(cx - 3, cy - 3), self.xy(cx + 3, cy + 3)], fill="#7A1F1A", width=self.sc(1.15))
-            draw.line([self.xy(cx + 3, cy - 3), self.xy(cx - 3, cy + 3)], fill="#7A1F1A", width=self.sc(1.15))
-            return
         draw.ellipse(self.xy(cx - 16, cy - 16, cx + 16, cy + 16), fill="#35414B", outline="#6A7A88", width=self.sc(1))
         draw.arc(self.xy(cx - 14, cy - 14, cx + 14, cy + 14), 205, 330, fill="#A4B2BF", width=self.sc(1))
         self._draw_close_icon(draw, cx, cy, "#F0F4F8")
@@ -1889,37 +1945,6 @@ class CardRenderer:
             arrow = "↑" if delta > 0 else "↓"
             text += f" {arrow}{percent_text(abs(delta))}"
         return text
-
-    def _draw_primary_limit(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
-        window = (sample.get("windows") or {}).get("five_hour") or empty_window()
-        color, ratio, available, stale = self._window_style(window)
-        if available and not stale:
-            color = "#4ADE80"
-        x1, y1, x2, y2 = 18, 118, 286, 324
-        self._draw_soft_shadow(draw, x1, y1, x2, y2, 24)
-        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(24), fill="#111C2B")
-
-        draw.text(self.xy(x1 + 22, y1 + 22), "5H", font=self._font(20, True), fill="#F8FAFC")
-
-        not_offered = bool(window.get("not_offered"))
-        used_text = self._used_label(window, stale, tr("not_applicable") if not_offered else tr("waiting"))
-        used_font = self._font(10, True)
-        used_width = min(126, max(84, int(text_width(draw, used_text, used_font) / self.SCALE) + 22))
-        draw.rounded_rectangle(self.xy(x2 - used_width - 18, y1 + 21, x2 - 18, y1 + 49), radius=self.sc(11), fill="#2A1F19")
-        draw.text(self.xy(x2 - used_width / 2 - 18, y1 + 35), used_text, font=used_font, fill="#FDBA74", anchor="mm")
-
-        main = self._remaining_label(window, stale)
-        main_font = self._font(72 if not stale else 40, True)
-        draw.text(self.xy(x1 + 22, y1 + 70), main, font=main_font, fill=color)
-
-        reset = self._compact_relative(window.get("reset_at")) if available else tr("model_no_5h") if not_offered else tr("waiting_snapshot")
-        if stale:
-            reset = tr("stale_snapshot")
-        elif available:
-            reset = f"{reset}{tr('reset')}"
-        draw.text(self.xy(x1 + 24, y1 + 58), reset, font=self._font(13, True), fill="#CBD5E1")
-
-        self._draw_progress(draw, x1 + 22, y2 - 34, x2 - 22, y2 - 18, ratio, color, available and not stale)
 
     def _draw_week_limit(self, image: Image.Image, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         window = (sample.get("windows") or {}).get("weekly") or empty_window()
@@ -2032,80 +2057,9 @@ class CardRenderer:
             draw.rectangle(self.xy(split_x - 1.5, y1, split_x + 1.5, y2), fill="#171C21")
         draw.line(self.xy(x1 + 7, y1 + 1, x2 - 7, y1 + 1), fill="#A8B4BB", width=1)
 
-    def _draw_soft_shadow(self, draw: ImageDraw.ImageDraw, x1: int, y1: int, x2: int, y2: int, radius: int) -> None:
-        draw.rounded_rectangle(self.xy(x1 + 2, y1 + 4, x2 + 2, y2 + 5), radius=self.sc(radius), fill="#07101F")
-
-    def _draw_metric_tile(
-        self,
-        draw: ImageDraw.ImageDraw,
-        sample: dict[str, Any],
-        key: str,
-        box: tuple[int, int, int, int],
-        accent: str,
-        primary: bool,
-    ) -> None:
-        x1, y1, x2, y2 = box
-        window = (sample.get("windows") or {}).get(key) or empty_window()
-        remaining = window.get("remaining_percent")
-        used = window.get("used_percent")
-        available = bool(window.get("available"))
-        stale = bool(window.get("stale"))
-        color = "#94A3B8" if not available else health_color(remaining)
-        if stale:
-            color = "#FF9500"
-
-        draw.rounded_rectangle(self.xy(x1, y1, x2, y2), radius=self.sc(24), fill="#F8FBFF")
-        draw.rounded_rectangle(self.xy(x1 + 2, y1 + 2, x2 - 2, y2 - 2), radius=self.sc(22), outline="#FFFFFF", width=self.sc(1))
-
-        label_font = self._font(17 if primary else 15, True)
-        small_font = self._font(13 if primary else 12)
-        draw.text(self.xy(x1 + 22, y1 + 20), tr("window_5h" if key == "five_hour" else "window_7d"), font=label_font, fill="#0F172A")
-
-        not_offered = bool(window.get("not_offered"))
-        used_text = f"{tr('used')} {percent_text(used)}" if available else tr("not_applicable") if not_offered else tr("status_waiting")
-        used_w = text_width(draw, used_text, self._font(11, True)) / self.SCALE + 24
-        draw.rounded_rectangle(self.xy(x2 - used_w - 20, y1 + 18, x2 - 20, y1 + 43), radius=self.sc(12), fill=self._soft_color(accent))
-        draw.text(self.xy(x2 - used_w - 8, y1 + 24), used_text, font=self._font(11, True), fill="#334155")
-
-        if stale:
-            main = tr("status_stale")
-            main_font = self._font(30 if primary else 22, True)
-            reset_line = f"{tr('stale_snapshot')} {percent_text(remaining)}"
-            helper_line = tr("waiting_snapshot")
-        else:
-            main = percent_text(remaining) if available else "--%"
-            main_font = self._font(58 if primary else 42, True)
-            reset_line = f"{self._compact_relative(window.get('reset_at'))}{tr('reset')}" if available else tr("model_no_5h") if not_offered else tr("waiting_snapshot")
-            helper_line = ""
-
-        reset_line = fit_text(draw, reset_line, small_font, self.sc((x2 - x1) - 44))
-        draw.text(self.xy(x1 + 24, y1 + 51), reset_line, font=small_font, fill="#64748B")
-
-        value_y = y1 + (75 if primary else 75)
-        draw.text(self.xy(x1 + 22, value_y), main, font=main_font, fill=color)
-        helper_x = x1 + 22 + (text_width(draw, main, main_font) / self.SCALE) + 10
-        if available and not stale and helper_x < x2 - 38:
-            draw.text(self.xy(helper_x, value_y + (32 if primary else 22)), helper_line, font=self._font(14 if primary else 12, True), fill="#475569")
-
-        bar_x1, bar_y1, bar_x2, bar_y2 = x1 + 24, y2 - 24, x2 - 24, y2 - 14
-        draw.rounded_rectangle(self.xy(bar_x1, bar_y1, bar_x2, bar_y2), radius=self.sc(5), fill="#E3EBF5")
-        if available and not stale:
-            ratio = clamp((clean_float(remaining) or 0.0) / 100.0, 0.0, 1.0)
-            fill_x2 = bar_x1 + max(8, int((bar_x2 - bar_x1) * ratio))
-            draw.rounded_rectangle(self.xy(bar_x1, bar_y1, fill_x2, bar_y2), radius=self.sc(5), fill=color)
-        elif stale:
-            draw.rounded_rectangle(self.xy(bar_x1, bar_y1, bar_x1 + 34, bar_y2), radius=self.sc(5), fill=color)
-
     def _compact_relative(self, timestamp: Any) -> str:
         text = format_relative(timestamp)
         return text.replace(" ", "") if CURRENT_LANGUAGE == "zh" else text
-
-    def _soft_color(self, color: str) -> str:
-        if color == "#34C759":
-            return "#E8F8ED"
-        if color == "#007AFF":
-            return "#E8F2FF"
-        return "#EEF2F7"
 
     def _draw_footer(self, draw: ImageDraw.ImageDraw, sample: dict[str, Any]) -> None:
         source_event = sample.get("source_event_at")
@@ -2158,11 +2112,17 @@ class UsageWidget:
         self.last_source_stamp: tuple[tuple[str, int, int], ...] | None = None
         self.photo: ImageTk.PhotoImage | None = None
         self.native_corners = False
+        self.taskbar_hidden = False
         self.billing_dialog: tk.Toplevel | None = None
         self._build_window()
         self._make_menu()
         self._place_initial()
         self._apply_window_shape()
+        if sys.platform == "win32":
+            # Tk applies final native styles when the root is mapped. Recheck after
+            # mapping so it cannot put this desktop widget back on the taskbar.
+            self.root.after(80, self._enforce_taskbar_free_window)
+            self.root.after(500, self._enforce_taskbar_free_window)
         self._set_image(empty_sample(self.config) | {"note": tr("pending_read")})
         self.refresh()
         self._poll_queue()
@@ -2221,6 +2181,7 @@ class UsageWidget:
 
     def _apply_window_shape(self) -> None:
         if sys.platform == "win32":
+            self.taskbar_hidden = apply_windows_tool_window(self.root)
             self.native_corners = apply_windows_native_corners(self.root)
             if self.native_corners:
                 return
@@ -2228,6 +2189,10 @@ class UsageWidget:
                 self.root.wm_attributes("-transparentcolor", self.KEY)
             apply_windows_glass(self.root)
         apply_rounded_window_region(self.root, self.WIDTH, self.HEIGHT, CardRenderer.CORNER_RADIUS)
+
+    def _enforce_taskbar_free_window(self) -> None:
+        if not self.closed:
+            self.taskbar_hidden = apply_windows_tool_window(self.root)
 
     def _set_image(self, sample: dict[str, Any]) -> None:
         self.current_sample = sample
@@ -2281,7 +2246,8 @@ class UsageWidget:
         save_config(self.config)
 
     def _inside(self, x: int, y: int, left: int, top: int, right: int, bottom: int) -> bool:
-        return left <= x <= right and top <= y <= bottom
+        scale = CardRenderer.DISPLAY_SCALE
+        return left * scale <= x <= right * scale and top * scale <= y <= bottom * scale
 
     def _show_menu(self, event: tk.Event) -> None:
         self.menu.tk_popup(event.x_root, event.y_root)
@@ -2871,6 +2837,9 @@ def release_single_instance() -> None:
 
 
 def run_app() -> int:
+    if sys.platform != "win32":
+        print(tr("windows_only"))
+        return 2
     if tk is None:
         print(tr("tk_missing"))
         return 2
@@ -2987,6 +2956,49 @@ def example_rate_limits(reset_offset: int = 3600) -> dict[str, Any]:
 
 
 class ReaderTests(unittest.TestCase):
+    def test_atomic_json_writes_are_collision_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = pathlib.Path(td) / "sample.json"
+            threads = [threading.Thread(target=atomic_write_json, args=(path, {"writer": index})) for index in range(12)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=5)
+                self.assertFalse(thread.is_alive())
+            payload = load_json(path, None)
+            self.assertIsInstance(payload, dict)
+            self.assertIn(payload["writer"], range(12))
+            self.assertEqual(list(path.parent.glob(f".{path.name}.*.tmp")), [])
+
+    def test_app_server_failure_is_throttled(self) -> None:
+        previous = dict(_APP_SERVER_CACHE)
+        try:
+            _APP_SERVER_CACHE.update({"checked_at": 0.0, "result": None})
+            with mock.patch(__name__ + ".fetch_app_server_rate_limits", return_value=None) as fetch:
+                home = pathlib.Path(r"C:\Users\test\.codex")
+                self.assertIsNone(get_app_server_rate_limits(home))
+                self.assertIsNone(get_app_server_rate_limits(home))
+                self.assertEqual(fetch.call_count, 1)
+        finally:
+            _APP_SERVER_CACHE.clear()
+            _APP_SERVER_CACHE.update(previous)
+
+    def test_widget_hit_regions_follow_display_scale(self) -> None:
+        widget = object.__new__(UsageWidget)
+        close_x = round(271 * CardRenderer.DISPLAY_SCALE)
+        close_y = round(46 * CardRenderer.DISPLAY_SCALE)
+        refresh_x = round(228 * CardRenderer.DISPLAY_SCALE)
+        self.assertTrue(widget._inside(close_x, close_y, 246, 22, 297, 72))
+        self.assertTrue(widget._inside(refresh_x, close_y, 200, 22, 250, 72))
+        self.assertFalse(widget._inside(refresh_x, close_y, 246, 22, 297, 72))
+
+    def test_tool_window_style_hides_taskbar_app_button(self) -> None:
+        original = 0x01000000 | WS_EX_APPWINDOW
+        style = tool_window_ex_style(original)
+        self.assertTrue(style & WS_EX_TOOLWINDOW)
+        self.assertFalse(style & WS_EX_APPWINDOW)
+        self.assertTrue(style & 0x01000000)
+
     def test_normalizes_live_app_server_weekly_window(self) -> None:
         reset = int(now_ts()) + WEEKLY_MINUTES * 60
         windows = normalize_rate_limits({
@@ -3266,10 +3278,16 @@ class ReaderTests(unittest.TestCase):
 
 def run_tests(include_ui: bool = False) -> int:
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(ReaderTests)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    fallback_stream = io.StringIO()
+    result = unittest.TextTestRunner(stream=sys.stderr or fallback_stream, verbosity=2).run(suite)
+    if not result.wasSuccessful() and sys.stderr is None:
+        log_line("Packaged self-tests failed:\n" + fallback_stream.getvalue())
     if include_ui:
         if tk is None or ImageTk is None:
-            print("UI smoke skipped: tkinter or Pillow unavailable")
+            if sys.stdout is not None:
+                print("UI smoke skipped: tkinter or Pillow unavailable")
+            else:
+                log_line("UI smoke skipped: tkinter or Pillow unavailable")
             return 1
 
         def fake_snapshot(_config: dict[str, Any]) -> dict[str, Any]:
@@ -3286,11 +3304,34 @@ def run_tests(include_ui: bool = False) -> int:
         root = tk.Tk()
         set_window_icon(root)
         widget = UsageWidget(root, dict(DEFAULT_CONFIG), snapshot_func=fake_snapshot)
+        if sys.platform == "win32" and not widget.taskbar_hidden:
+            widget.quit()
+            raise RuntimeError("Windows tool-window style was not applied")
+        close_fallback_used: list[bool] = []
+
+        def click_close_control() -> None:
+            x = round(271 * CardRenderer.DISPLAY_SCALE)
+            y = round(46 * CardRenderer.DISPLAY_SCALE)
+            widget.label.event_generate("<ButtonPress-1>", x=x, y=y)
+            widget.label.event_generate("<ButtonRelease-1>", x=x, y=y)
+
+        def close_fallback() -> None:
+            close_fallback_used.append(True)
+            widget.quit()
+
         root.after(180, lambda: widget.label.event_generate("<Enter>"))
         root.after(360, lambda: widget.label.event_generate("<Leave>"))
-        root.after(650, widget.quit)
+        root.after(650, click_close_control)
+        root.after(1100, close_fallback)
         root.mainloop()
-        print("UI smoke ok")
+        if close_fallback_used:
+            if sys.stdout is not None:
+                print("UI smoke failed: close control did not exit the widget")
+            else:
+                log_line("UI smoke failed: close control did not exit the widget")
+            return 1
+        if sys.stdout is not None:
+            print("UI smoke ok")
     return 0 if result.wasSuccessful() else 1
 
 
