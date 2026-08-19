@@ -84,3 +84,7 @@ jobs:
           if ($process.ExitCode -ne 0) {
             throw "Packaged application self-test failed with exit code $($process.ExitCode)."
           }
+
+      - name: Test Windows installation flow
+        shell: pwsh
+        run: tools/test_windows_install.ps1

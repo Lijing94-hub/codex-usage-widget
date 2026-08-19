@@ -25,7 +25,7 @@ Codex Vision 把最重要的 Codex 用量信息放在桌面上：7D 周额度、
 
 [**Download CodexVision-Windows.zip**](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip)
 
-解压后双击 `CodexVision.exe`。发布包自带 Python 运行环境，不需要另外安装依赖。
+解压后双击 `install.cmd` 完成安装。发布包自带 Python 运行环境，不需要另外安装依赖。
 
 ## Product Highlights
 
@@ -33,6 +33,7 @@ Codex Vision 把最重要的 Codex 用量信息放在桌面上：7D 周额度、
 - **状态始终可解释**：实时、缓存、等待和过期状态分别呈现，不用空白或错误数字掩盖数据来源。
 - **套餐日期可确认**：支持从 ChatGPT、Apple 或 Google Play 官方账单页确认准确日期；只在本机保存日期和渠道。
 - **重置次数更可信**：优先显示 Codex 返回的重置余额；无法取得时，才根据已确认套餐日期与 7D 周期估算。
+- **跟随 Codex 启动**：无界面轻量监听器只在检测到 Codex 桌面程序启动时打开小组件；不会在同一次 Codex 会话中反复拉起。
 - **桌面体验克制**：Windows 毛玻璃、悬停半透明、拖动定位、置顶开关，并且不占任务栏和 `Alt + Tab`。
 - **本地优先**：本项目没有遥测、账号系统或自建服务器，也不会上传会话内容。
 - **中英文自适应**：跟随 Windows 系统语言显示简体中文或英文。
@@ -61,10 +62,14 @@ The widget refreshes the display every few seconds, throttles app-server calls, 
 
 1. Download the latest Windows zip from [Releases](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest).
 2. Extract the complete folder.
-3. Double-click `CodexVision.exe`.
-4. Optional: run `install-startup.cmd` to start Codex Vision when you sign in.
+3. Double-click `install.cmd` once.
+4. Confirm the Windows taskbar pin request when Codex Vision opens.
 
-Use `uninstall-startup.cmd` to remove the startup shortcut. The script does not delete settings or usage snapshots.
+The installer copies the app to `%LOCALAPPDATA%\Programs\CodexVision`, creates Desktop and Start menu shortcuts, and installs a hidden launcher that opens Codex Vision when the Codex desktop app starts. The visible widget itself does not open merely because Windows signs in.
+
+Run `uninstall.cmd` from the downloaded folder or installed app folder to remove the application and shortcuts. Local settings and usage snapshots are preserved.
+
+For portable use, skip installation and open `CodexVision.exe` directly.
 
 Windows SmartScreen may warn because the community build is not code-signed. Verify that the file came from this repository before choosing **Run anyway**.
 
