@@ -28,7 +28,10 @@ try {
     }
 
     $shell = New-Object -ComObject WScript.Shell
-    if (-not $shell.CreateShortcut($desktopShortcut).TargetPath.Equals($installedExe, [StringComparison]::OrdinalIgnoreCase)) {
+    $desktopTarget = $shell.CreateShortcut($desktopShortcut).TargetPath
+    $canonicalTarget = (Get-Item -LiteralPath $desktopTarget).FullName
+    $canonicalInstalledExe = (Get-Item -LiteralPath $installedExe).FullName
+    if (-not $canonicalTarget.Equals($canonicalInstalledExe, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Desktop shortcut target is incorrect."
     }
     if ($shell.CreateShortcut($watcherShortcut).Arguments -ne "--watch-codex") {
