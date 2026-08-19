@@ -23,6 +23,7 @@ import traceback
 import unittest
 import webbrowser
 from collections.abc import Callable
+from ctypes import wintypes
 from typing import Any
 from unittest import mock
 
@@ -43,11 +44,19 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
     ImageFont = None
     ImageTk = None
 
+try:
+    import winrt.windows.foundation  # noqa: F401 - required by the packaged TaskbarManager projection
+    from winrt.windows.ui.shell import TaskbarManager
+except Exception:  # pragma: no cover - optional outside supported Windows builds
+    TaskbarManager = None
+
 
 APP_NAME = "Codex Vision"
 APP_VERSION = 4
-APP_RELEASE_VERSION = "1.0.1"
+APP_RELEASE_VERSION = "1.1.0"
+APP_USER_MODEL_ID = "Lijing94.CodexVision"
 SINGLE_INSTANCE_MUTEX = "Local\\Lijing94.CodexUsageWidget.SingleInstance"
+CODEX_WATCHER_MUTEX = "Local\\Lijing94.CodexVision.CodexWatcher"
 _SINGLE_INSTANCE_HANDLE: int | None = None
 
 
@@ -189,6 +198,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "menu_topmost": "Always on top / off",
         "menu_reset": "Reset to top right",
         "menu_quit": "Quit",
+        "pin_title": "Pin Codex Vision",
+        "pin_prompt": "Installation is complete. Pin Codex Vision to the Windows taskbar?",
+        "pin_success": "Codex Vision is pinned to the taskbar.",
+        "pin_already": "Codex Vision is already pinned to the taskbar.",
+        "pin_unavailable": "Windows could not show the pin request. Open Codex Vision from Start, then choose Pin to taskbar.",
         "pending_read": "Reading Codex limits",
         "pending_refresh": "Finding latest limit snapshot",
         "manual_unchanged": "Refresh finished, but no new limit snapshot was found",
@@ -200,6 +214,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "arg_include_ui": "Include UI smoke test",
         "arg_snapshot": "Print current limit snapshot",
         "arg_make_icon": "Regenerate high-resolution icon",
+        "arg_offer_taskbar_pin": "Offer taskbar pinning after installation",
         "note_no_snapshot": "No new limit snapshot was found",
         "note_new_record": "It will refresh after Codex writes a new record",
         "note_unrecognized": "Limit records were found, but 5-hour or 7-day windows were not recognized",
@@ -282,6 +297,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "menu_topmost": "置顶 / 取消置顶",
         "menu_reset": "回到右上角",
         "menu_quit": "退出",
+        "pin_title": "固定 Codex Vision",
+        "pin_prompt": "安装已完成。是否将 Codex Vision 固定到 Windows 任务栏？",
+        "pin_success": "Codex Vision 已固定到任务栏。",
+        "pin_already": "Codex Vision 已经固定在任务栏。",
+        "pin_unavailable": "Windows 暂时无法显示固定请求。请从开始菜单打开 Codex Vision，再选择“固定到任务栏”。",
         "pending_read": "正在读取 Codex 额度",
         "pending_refresh": "正在查找最新额度快照",
         "manual_unchanged": "刷新完成，但没有新的额度快照",
@@ -293,6 +313,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "arg_include_ui": "自测时包含窗口烟雾测试",
         "arg_snapshot": "打印当前读取到的额度快照",
         "arg_make_icon": "重新生成高分辨率图标",
+        "arg_offer_taskbar_pin": "安装后询问是否固定到任务栏",
         "note_no_snapshot": "没有找到新的额度快照",
         "note_new_record": "Codex 写入新记录后会自动刷新",
         "note_unrecognized": "读到了额度记录，但没有识别出 5 小时或 1 周窗口",
@@ -1274,6 +1295,58 @@ def set_dpi_awareness() -> None:
         ctypes.windll.user32.SetProcessDPIAware()
 
 
+def set_windows_app_user_model_id() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        setter = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
+        setter.argtypes = [ctypes.c_wchar_p]
+        setter.restype = ctypes.c_long
+        return setter(APP_USER_MODEL_ID) >= 0
+    except Exception as exc:
+        log_line(f"Failed to set Windows AppUserModelID: {exc}")
+        return False
+
+
+def _winrt_result(operation: Any) -> Any:
+    getter = getattr(operation, "get", None)
+    if not callable(getter):
+        raise RuntimeError("Windows async operation cannot be completed synchronously")
+    return getter()
+
+
+def taskbar_pin_state(manager: Any = None) -> str:
+    if sys.platform != "win32" or (manager is None and TaskbarManager is None):
+        return "unsupported"
+    try:
+        active_manager = manager or TaskbarManager.get_default()
+        if not bool(active_manager.is_supported):
+            return "unsupported"
+        if bool(_winrt_result(active_manager.is_current_app_pinned_async())):
+            return "pinned"
+        return "available" if bool(active_manager.is_pinning_allowed) else "unavailable"
+    except Exception as exc:
+        log_line(f"Taskbar pin status unavailable: {exc}")
+        return "unsupported"
+
+
+def request_windows_taskbar_pin(manager: Any = None) -> tuple[bool, str]:
+    if sys.platform != "win32" or (manager is None and TaskbarManager is None):
+        return False, "unsupported"
+    try:
+        active_manager = manager or TaskbarManager.get_default()
+        state = taskbar_pin_state(active_manager)
+        if state == "pinned":
+            return True, "already_pinned"
+        if state != "available":
+            return False, state
+        pinned = bool(_winrt_result(active_manager.request_pin_current_app_async()))
+        return pinned, "pinned" if pinned else "declined"
+    except Exception as exc:
+        log_line(f"Taskbar pin request failed: {exc}")
+        return False, "unsupported"
+
+
 class AccentPolicy(ctypes.Structure):
     _fields_ = [
         ("AccentState", ctypes.c_int),
@@ -2097,6 +2170,7 @@ class UsageWidget:
         root: tk.Tk,
         config: dict[str, Any],
         snapshot_func: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        offer_taskbar_pin: bool = False,
     ):
         self.root = root
         self.config = config
@@ -2131,6 +2205,8 @@ class UsageWidget:
         self._ensure_visible_loop()
         if self.config.get("billing_expiry_channel") in BILLING_URLS and not self.config.get("billing_expiry_date"):
             self.root.after(700, self.open_billing_sync)
+        if offer_taskbar_pin:
+            self.root.after(1100, self.offer_taskbar_pin)
 
     def _build_window(self) -> None:
         self.root.title(tr("app_name"))
@@ -2251,6 +2327,29 @@ class UsageWidget:
 
     def _show_menu(self, event: tk.Event) -> None:
         self.menu.tk_popup(event.x_root, event.y_root)
+
+    def offer_taskbar_pin(self) -> None:
+        if self.closed or messagebox is None:
+            return
+        if taskbar_pin_state() == "pinned":
+            return
+        self.root.lift()
+        self.root.focus_force()
+        if messagebox.askyesno(tr("pin_title"), tr("pin_prompt"), parent=self.root):
+            self.pin_to_taskbar()
+
+    def pin_to_taskbar(self) -> None:
+        self.root.lift()
+        self.root.focus_force()
+        pinned, state = request_windows_taskbar_pin()
+        if messagebox is None:
+            return
+        if state == "already_pinned":
+            messagebox.showinfo(tr("pin_title"), tr("pin_already"), parent=self.root)
+        elif pinned:
+            messagebox.showinfo(tr("pin_title"), tr("pin_success"), parent=self.root)
+        elif state != "declined":
+            messagebox.showwarning(tr("pin_title"), tr("pin_unavailable"), parent=self.root)
 
     def open_billing_sync(self) -> None:
         if self.billing_dialog is not None and self.billing_dialog.winfo_exists():
@@ -2836,7 +2935,115 @@ def release_single_instance() -> None:
     _SINGLE_INSTANCE_HANDLE = None
 
 
-def run_app() -> int:
+class ProcessEntry32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", wintypes.LONG),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", wintypes.WCHAR * 260),
+    ]
+
+
+def windows_process_running(executable_names: set[str]) -> bool:
+    if sys.platform != "win32":
+        return False
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry32W)]
+    kernel32.Process32FirstW.restype = wintypes.BOOL
+    kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry32W)]
+    kernel32.Process32NextW.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)  # TH32CS_SNAPPROCESS
+    invalid_handle = ctypes.c_void_p(-1).value
+    if snapshot == invalid_handle:
+        return False
+    expected = {name.casefold() for name in executable_names}
+    entry = ProcessEntry32W()
+    entry.dwSize = ctypes.sizeof(entry)
+    try:
+        if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return False
+        while True:
+            if entry.szExeFile.casefold() in expected:
+                return True
+            if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                return False
+    finally:
+        kernel32.CloseHandle(snapshot)
+
+
+def widget_launch_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, str(pathlib.Path(__file__).resolve())]
+
+
+def launch_widget_process() -> None:
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen(
+        widget_launch_command(),
+        cwd=str(APP_DIR),
+        close_fds=True,
+        creationflags=creation_flags,
+    )
+
+
+def monitor_codex_launches(
+    process_probe: Callable[[], bool],
+    launcher: Callable[[], None],
+    sleep_func: Callable[[float], None] = time.sleep,
+    poll_seconds: float = 2.0,
+    iterations: int | None = None,
+) -> None:
+    was_running = False
+    completed = 0
+    while iterations is None or completed < iterations:
+        is_running = bool(process_probe())
+        if is_running and not was_running:
+            launcher()
+        was_running = is_running
+        completed += 1
+        if iterations is None or completed < iterations:
+            sleep_func(poll_seconds)
+
+
+def run_codex_watcher() -> int:
+    if sys.platform != "win32":
+        return 2
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    handle = kernel32.CreateMutexW(None, False, CODEX_WATCHER_MUTEX)
+    if not handle:
+        return 1
+    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(handle)
+        return 0
+    try:
+        monitor_codex_launches(
+            lambda: windows_process_running({"ChatGPT.exe"}),
+            launch_widget_process,
+        )
+        return 0
+    except Exception:
+        log_line("Codex launch watcher crashed:\n" + traceback.format_exc())
+        return 1
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def run_app(offer_taskbar_pin: bool = False) -> int:
     if sys.platform != "win32":
         print(tr("windows_only"))
         return 2
@@ -2846,6 +3053,7 @@ def run_app() -> int:
     if Image is None or ImageTk is None:
         print(tr("pillow_missing"))
         return 2
+    set_windows_app_user_model_id()
     if not acquire_single_instance():
         return 0
     set_dpi_awareness()
@@ -2856,7 +3064,7 @@ def run_app() -> int:
                 create_icon(ICON_PATH)
         root = tk.Tk()
         set_window_icon(root)
-        UsageWidget(root, config)
+        UsageWidget(root, config, offer_taskbar_pin=offer_taskbar_pin)
         root.mainloop()
         return 0
     except Exception:
@@ -2998,6 +3206,43 @@ class ReaderTests(unittest.TestCase):
         self.assertTrue(style & WS_EX_TOOLWINDOW)
         self.assertFalse(style & WS_EX_APPWINDOW)
         self.assertTrue(style & 0x01000000)
+
+    def test_taskbar_pin_request_uses_supported_windows_flow(self) -> None:
+        class CompletedOperation:
+            def __init__(self, value: bool):
+                self.value = value
+
+            def get(self) -> bool:
+                return self.value
+
+        class FakeManager:
+            is_supported = True
+            is_pinning_allowed = True
+
+            def is_current_app_pinned_async(self) -> CompletedOperation:
+                return CompletedOperation(False)
+
+            def request_pin_current_app_async(self) -> CompletedOperation:
+                return CompletedOperation(True)
+
+        manager = FakeManager()
+        with mock.patch(__name__ + ".sys.platform", "win32"):
+            self.assertEqual(taskbar_pin_state(manager), "available")
+            self.assertEqual(request_windows_taskbar_pin(manager), (True, "pinned"))
+
+    def test_codex_watcher_launches_only_on_process_transitions(self) -> None:
+        states = iter((False, True, True, False, True))
+        launches: list[str] = []
+        sleeps: list[float] = []
+        monitor_codex_launches(
+            lambda: next(states),
+            lambda: launches.append("launched"),
+            sleeps.append,
+            poll_seconds=0.25,
+            iterations=5,
+        )
+        self.assertEqual(launches, ["launched", "launched"])
+        self.assertEqual(sleeps, [0.25, 0.25, 0.25, 0.25])
 
     def test_normalizes_live_app_server_weekly_window(self) -> None:
         reset = int(now_ts()) + WEEKLY_MINUTES * 60
@@ -3346,6 +3591,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--include-ui", action="store_true", help=tr("arg_include_ui"))
     parser.add_argument("--snapshot", action="store_true", help=tr("arg_snapshot"))
     parser.add_argument("--make-icon", action="store_true", help=tr("arg_make_icon"))
+    parser.add_argument("--offer-taskbar-pin", action="store_true", help=tr("arg_offer_taskbar_pin"))
+    parser.add_argument("--watch-codex", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.test:
         return run_tests(include_ui=args.include_ui)
@@ -3354,7 +3601,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.make_icon:
         print(create_icon())
         return 0
-    return run_app()
+    if args.watch_codex:
+        return run_codex_watcher()
+    return run_app(offer_taskbar_pin=args.offer_taskbar_pin)
 
 
 if __name__ == "__main__":

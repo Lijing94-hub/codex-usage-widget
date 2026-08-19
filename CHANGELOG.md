@@ -2,6 +2,19 @@
 
 All notable changes to Codex Vision are documented here.
 
+## [1.1.0] - 2026-08-19
+
+### Added
+
+- One-click per-user installation with Desktop and Start menu shortcuts.
+- A hidden lightweight launcher that opens Codex Vision when the Codex desktop app starts.
+- Native Windows taskbar pin requests with explicit user confirmation.
+- A complete uninstaller that preserves local usage settings.
+
+### Changed
+
+- Replaced direct widget startup at Windows sign-in with Codex-linked startup.
+
 ## [1.0.1] - 2026-08-19
 
 ### Fixed

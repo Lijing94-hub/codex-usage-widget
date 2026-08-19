@@ -23,9 +23,10 @@ codex, openai, windows, desktop-widget, usage-tracker, rate-limit, python, tkint
 3. Run `python -m py_compile codex_usage_widget.py`.
 4. Run `python codex_usage_widget.py --test --include-ui`.
 5. Run `build-windows.cmd` on Windows.
-6. Start the packaged EXE and verify refresh, drag, hover, plan-date dialog, taskbar hiding and close.
-7. Commit and push the release changes.
-8. Create and push an annotated `vX.Y.Z` tag. The release workflow builds and uploads `CodexVision-Windows.zip`.
+6. Run `tools/test_windows_install.ps1` against the package and verify all three shortcuts.
+7. Start the packaged EXE and verify refresh, drag, hover, plan-date dialog, taskbar hiding, taskbar pin request and close.
+8. Commit and push the release changes.
+9. Create and push an annotated `vX.Y.Z` tag. The release workflow builds and uploads `CodexVision-Windows.zip`.
 
 ## Release Notes
 

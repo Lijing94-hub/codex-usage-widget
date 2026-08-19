@@ -48,8 +48,10 @@ if errorlevel 1 exit /b 1
 
 copy /Y "%APP_DIR%README.md" "%DIST_DIR%\README.md" >nul
 copy /Y "%APP_DIR%LICENSE" "%DIST_DIR%\LICENSE" >nul
-copy /Y "%APP_DIR%install-startup-exe.cmd" "%DIST_DIR%\install-startup.cmd" >nul
-copy /Y "%APP_DIR%uninstall-startup.cmd" "%DIST_DIR%\uninstall-startup.cmd" >nul
+copy /Y "%APP_DIR%install.cmd" "%DIST_DIR%\install.cmd" >nul
+copy /Y "%APP_DIR%install-windows.ps1" "%DIST_DIR%\install-windows.ps1" >nul
+copy /Y "%APP_DIR%uninstall.cmd" "%DIST_DIR%\uninstall.cmd" >nul
+copy /Y "%APP_DIR%uninstall-windows.ps1" "%DIST_DIR%\uninstall-windows.ps1" >nul
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
 if errorlevel 1 exit /b 1
