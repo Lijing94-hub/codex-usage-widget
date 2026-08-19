@@ -19,7 +19,7 @@
 
 Codex Vision 把最重要的 Codex 用量信息放在桌面上：7D 周额度、下次重置、套餐到期时间和剩余重置次数。无需打开网页，也无需先运行一个 Codex 任务来触发刷新。
 
-> Codex Vision 1.0 仅支持 Windows 10/11。macOS 产品线已经停止维护并从仓库移除。
+> Codex Vision 仅支持 Windows 10/11。
 
 ## Download
 
