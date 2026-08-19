@@ -12,14 +12,14 @@ if not errorlevel 1 (
   exit /b 1
 )
 
-where py >nul 2>nul
+where python >nul 2>nul
 if errorlevel 1 (
-  echo Could not find the Python launcher. Install Python 3.10+ first.
+  echo Could not find Python on PATH. Install Python 3.10+ first.
   exit /b 1
 )
 
 if not exist "%PY%" (
-  py -3 -m venv "%BUILD_VENV%"
+  python -m venv "%BUILD_VENV%"
   if errorlevel 1 exit /b 1
 )
 

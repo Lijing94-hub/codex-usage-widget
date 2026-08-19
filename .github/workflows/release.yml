@@ -33,6 +33,29 @@ jobs:
             throw "Windows release archive was not created."
           }
 
+      - name: Test packaged application
+        shell: pwsh
+        run: |
+          $process = Start-Process `
+            -FilePath "dist\CodexVision\CodexVision.exe" `
+            -ArgumentList "--test", "--include-ui" `
+            -PassThru
+          if (-not $process.WaitForExit(30_000)) {
+            Stop-Process -Id $process.Id -Force
+            throw "Packaged application self-test timed out."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged application self-test failed with exit code $($process.ExitCode)."
+          }
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash "dist\CodexVision-Windows.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  CodexVision-Windows.zip" | Set-Content `
+            "dist\CodexVision-Windows.zip.sha256" `
+            -Encoding ascii
+
       - name: Publish GitHub release
         shell: pwsh
         env:
@@ -40,6 +63,7 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" `
             "dist\CodexVision-Windows.zip" `
+            "dist\CodexVision-Windows.zip.sha256" `
             --verify-tag `
             --title "Codex Vision ${{ github.ref_name }}" `
             --generate-notes
