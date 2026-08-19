@@ -1,187 +1,123 @@
 # Codex Vision
 
 <p align="center">
-  <img src="docs/social-preview.png" alt="Codex 用量桌面小组件" width="760">
+  <img src="docs/social-preview.png" alt="Codex Vision for Windows" width="100%">
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Codex Vision live quota screenshot" width="230">
-  <img src="docs/hover-screenshot.png" alt="Codex Vision hover glass screenshot" width="230">
-  <img src="docs/waiting-screenshot.png" alt="Codex Vision waiting for new Codex record screenshot" width="230">
+  <a href="https://github.com/Lijing94-hub/codex-usage-widget/releases/latest"><img src="https://img.shields.io/github/v/release/Lijing94-hub/codex-usage-widget?display_name=tag&style=flat-square" alt="Latest release"></a>
+  <a href="https://github.com/Lijing94-hub/codex-usage-widget/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/Lijing94-hub/codex-usage-widget/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Lijing94-hub/codex-usage-widget?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4?style=flat-square" alt="Windows 10 and 11">
+  <a href="https://github.com/Lijing94-hub/codex-usage-widget/stargazers"><img src="https://img.shields.io/github/stars/Lijing94-hub/codex-usage-widget?style=flat-square" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
-  <strong>See clearly. Create freely.</strong>
-  <br>
-  <strong>清晰掌握，从容创作。</strong>
+  <strong>清晰掌握，从容创作。</strong><br>
+  A focused Windows desktop widget for Codex weekly usage.
 </p>
 
-<p align="center">
-  <a href="#windows-quick-start">Windows</a>
-  |
-  <a href="#macos-quick-start">macOS</a>
-  |
-  <a href="#privacy">Local only</a>
-  |
-  <a href="#run-tests">Tested</a>
-  |
-  <a href="docs/PROMOTION.md">Share Kit</a>
-</p>
+Codex Vision 把最重要的 Codex 用量信息放在桌面上：7D 周额度、下次重置、套餐到期时间和剩余重置次数。无需打开网页，也无需先运行一个 Codex 任务来触发刷新。
 
-<p align="center">
-  <a href="https://github.com/Lijing94-hub/codex-usage-widget/stargazers">
-    <img src="https://img.shields.io/github/stars/Lijing94-hub/codex-usage-widget?style=social" alt="GitHub stars">
-  </a>
-</p>
-
-Codex Vision is built for people who keep Codex open all day and want quota awareness without opening dashboards, digging through logs, or guessing when the next reset happens.
-
-中文用户可以把它当成一个常驻桌面的 Codex 额度看板：不用打开网页，不用翻日志，直接看 7D 剩余用量、套餐到期时间和到期前剩余重置次数。
-
-It sits quietly on the desktop and keeps the account details that matter most large enough to read at a glance:
-
-- `7D`: the weekly Codex quota
-- Confirmed plan expiration from the official ChatGPT, Apple, or Google Play billing page
-- Estimated resets remaining before expiration, based on the current 7-day cycle
-
-The interface is intentionally compact and premium-feeling: a smooth Image-2-generated graphite glass material plate, Liquid Glass-inspired controls, high-DPI dynamic typography, rounded geometry, Codex branding, a semantic quota bar without duplicate labels, hover translucency, and a focused weekly-usage layout.
-
-If this project helps you keep Codex usage visible, a GitHub Star helps more users discover it.
-
-如果这个小组件对你有帮助，欢迎点一个 GitHub Star 支持一下。
+> Codex Vision 1.0 仅支持 Windows 10/11。macOS 产品线已经停止维护并从仓库移除。
 
 ## Download
 
-Windows users can download the ready-to-run package from the latest release:
+[**Download CodexVision-Windows.zip**](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip)
 
-[Download CodexVision-Windows.zip](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip)
+解压后双击 `CodexVision.exe`。发布包自带 Python 运行环境，不需要另外安装依赖。
 
-Unzip it, then double-click `CodexVision.exe`.
+## Product Highlights
 
-## Why It Feels Good
+- **周额度自动同步**：优先通过本机 Codex app-server 获取新数据，无需启动任务；不可用时回退到本地额度记录。
+- **状态始终可解释**：实时、缓存、等待和过期状态分别呈现，不用空白或错误数字掩盖数据来源。
+- **套餐日期可确认**：支持从 ChatGPT、Apple 或 Google Play 官方账单页确认准确日期；只在本机保存日期和渠道。
+- **重置次数更可信**：优先显示 Codex 返回的重置余额；无法取得时，才根据已确认套餐日期与 7D 周期估算。
+- **桌面体验克制**：Windows 毛玻璃、悬停半透明、拖动定位、置顶开关，并且不占任务栏和 `Alt + Tab`。
+- **本地优先**：本项目没有遥测、账号系统或自建服务器，也不会上传会话内容。
+- **中英文自适应**：跟随 Windows 系统语言显示简体中文或英文。
 
-- Beautiful vertical desktop widget that can live near the edge of your screen
-- Smooth Image-2 glass material integrated into the real renderer, not used as a static mockup
-- Direct Codex rate-limit sync without starting a task, with local snapshots as a resilient fallback
-- Big remaining-percentage typography for quick scanning
-- Locally confirmed plan expiration and estimated resets remaining before expiration
-- Green remaining segment and orange used segment for instant visual understanding
-- Hover glass mode, so you can inspect content underneath without fully hiding quota data
-- Background sync every 30 seconds, instant manual refresh, always-on-top mode, and drag-to-position
-- Cache fallback when Codex has not written a fresh snapshot yet
-- Clear reset/waiting state instead of disappearing or showing misleading values
-- System language detection with Simplified Chinese and English UI text
-- Windows startup install/uninstall scripts
-- macOS launcher included for sharing with teammates
-- Built-in tests for parsing, caching, stale windows, and UI rendering
+## Screenshots
 
-## More Screenshots
-
-| Live quota | Hover glass | Reset-safe state | English UI |
+| Live | Hover glass | Waiting safely | English |
 | --- | --- | --- | --- |
-| <img src="docs/screenshot.png" alt="Live quota view" width="180"> | <img src="docs/hover-screenshot.png" alt="Hover glass view" width="180"> | <img src="docs/waiting-screenshot.png" alt="Waiting for new Codex record view" width="180"> | <img src="docs/english-screenshot.png" alt="English UI view" width="180"> |
+| <img src="docs/screenshot.png" alt="Codex Vision live weekly quota" width="210"> | <img src="docs/hover-screenshot.png" alt="Codex Vision hover glass mode" width="210"> | <img src="docs/waiting-screenshot.png" alt="Codex Vision waiting state" width="210"> | <img src="docs/english-screenshot.png" alt="Codex Vision English UI" width="210"> |
 
-<details>
-  <summary>Image-2 concept and production material</summary>
-  <br>
-  <img src="docs/design-concept-image2-liquid-mica.png" alt="Image-2 Liquid Glass and Mica concept study" width="320">
-  <img src="docs/image2-empty-glass-master.png" alt="Image-2 production glass material plate" width="182">
-  <p>The blank Image-2 material is loaded by the application itself; live quota data and controls are rendered above it at runtime.</p>
-</details>
+The screenshots use deterministic sample data generated by the production renderer. No interface elements are redrawn in a mockup.
+
+## How It Works
+
+Codex Vision uses a layered data strategy:
+
+1. Ask the locally installed Codex app-server for the current rate-limit snapshot.
+2. Fall back to `~/.codex/logs_2.sqlite` and recent `~/.codex/sessions/**/*.jsonl` rate-limit events.
+3. Keep the last successful snapshot in `%APPDATA%\CodexUsageWidget\limit_sample.json` so a temporary read failure does not make the widget disappear.
+
+The widget refreshes the display every few seconds, throttles app-server calls, and immediately checks again when Codex writes a new local record.
+
+## Install
+
+### Recommended
+
+1. Download the latest Windows zip from [Releases](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest).
+2. Extract the complete folder.
+3. Double-click `CodexVision.exe`.
+4. Optional: run `install-startup.cmd` to start Codex Vision when you sign in.
+
+Use `uninstall-startup.cmd` to remove the startup shortcut. The script does not delete settings or usage snapshots.
+
+Windows SmartScreen may warn because the community build is not code-signed. Verify that the file came from this repository before choosing **Run anyway**.
+
+### Controls
+
+- Click the refresh icon to force a live sync.
+- Click the close icon to exit completely.
+- Drag the widget to reposition it.
+- Hover to lower opacity and inspect content underneath.
+- Right-click for refresh, plan-date sync, always-on-top, position reset, and quit.
+- Click the plan section to confirm the exact billing date shown by your official billing provider.
 
 ## Privacy
 
-This widget only reads local Codex files under your own `~/.codex` directory.
+Codex Vision does not send data to a service operated by this project. It requests rate-limit information from the locally installed Codex app-server and reads only rate-limit events from local Codex files. It does not display conversation text.
 
-It does not upload data and does not read or display your conversation content. Usage data comes from local Codex rate-limit snapshots. For an accurate subscription date, click the plan section or use **Sync plan date**, open the official billing page for ChatGPT, Apple, or Google Play, then confirm the date shown there. Only that date and billing channel are stored locally; passwords, cookies, and tokens are never collected or copied into the widget cache.
+The billing confirmation flow opens the official provider page in your browser. Only the date and provider name are stored locally. Passwords, cookies and account tokens are not collected or copied into the widget cache.
 
-## Windows Quick Start
+## Build From Source
 
-Recommended for most users:
-
-1. Download `CodexVision-Windows.zip` from the latest GitHub Release.
-2. Unzip it.
-3. Double-click `CodexVision.exe`.
-
-Optional:
-
-- Double-click `install-startup.cmd` from the unzipped folder to launch it automatically when Windows starts.
-- Double-click `uninstall-startup.cmd` to remove startup launch.
-- Windows may warn about unsigned apps. Choose to keep/open it if you trust this repository.
-
-Developer/source mode:
-
-1. Install Python 3.10+ if you do not already have it.
-2. Install Pillow:
-
-   ```powershell
-   py -m pip install pillow
-   ```
-
-3. Double-click `start.cmd`.
-
-Source-mode optional:
-
-- Double-click `install-startup.cmd` to launch it automatically when Windows starts.
-- Double-click `uninstall-startup.cmd` to remove startup launch.
-- Click the plan section, or right-click and choose **Sync plan date**, to confirm the exact date from your billing provider.
-- Right-click the widget for refresh, plan date sync, always-on-top, reset position, and quit.
-
-## Build Windows Release
+Requirements: Windows 10/11, Python 3.10+, and Pillow.
 
 ```powershell
-build-windows.cmd
-```
-
-The packaged app will be written to `dist\CodexVision\CodexVision.exe`, and the uploadable archive will be written to `dist\CodexVision-Windows.zip`.
-
-## macOS Quick Start
-
-1. Install Python 3 if needed.
-2. Double-click `start-mac.command`.
-3. If macOS blocks it, right-click the file and choose Open.
-
-The first launch creates a local `.venv` and installs Pillow automatically.
-
-## Run Tests
-
-Windows:
-
-```powershell
-run-tests.cmd
-```
-
-Cross-platform:
-
-```bash
+py -m pip install -r requirements-dev.txt
 python codex_usage_widget.py --test --include-ui
+.\build-windows.cmd
 ```
 
-## Data Sources
+Build outputs:
 
-The widget reads local Codex runtime files, including:
+- `dist\CodexVision\CodexVision.exe`
+- `dist\CodexVision-Windows.zip`
 
-- `~/.codex/logs_2.sqlite`
-- `~/.codex/sessions/**/*.jsonl`
+Documentation screenshots are reproducible:
 
-Successful snapshots are cached locally so the widget can keep showing the last known value if Codex has not emitted a new limit event yet.
+```powershell
+python tools\generate_docs_assets.py
+```
 
-Cache locations:
+## Known Boundaries
 
-- Windows: `%APPDATA%\CodexUsageWidget\limit_sample.json`
-- macOS: `~/Library/Application Support/CodexUsageWidget/limit_sample.json`
+- This project is Windows-only and currently ships an unsigned community build.
+- The exact subscription end date is not always exposed by Codex. When it is unavailable, the widget asks you to confirm the date shown by the official billing provider.
+- Codex may change its local event format or app-server protocol. Cache fallback keeps the last valid value visible, but a future Codex update can still require a parser update.
 
-## Design Notes
+## Contributing
 
-The UI is intentionally narrow and vertical so it can stay visible without stealing the desktop. It uses a restrained dark glass surface, a high-contrast quota hierarchy, and a split quota bar:
+Bug reports should include the Windows version, Codex Vision version, expected result and a screenshot with personal data removed. Never post `auth.json`, account tokens, cookies or conversation files.
 
-- Left side: remaining quota
-- Right side: used quota
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development checklist and [SECURITY.md](SECURITY.md) for private vulnerability reporting guidance.
 
-On hover, the widget lowers window opacity and brightens the acrylic surface, making it possible to inspect whatever is behind it without fully hiding the quota information.
+## License And Disclaimer
 
-## Disclaimer
+Released under the [MIT License](LICENSE).
 
-This is an unofficial community project and is not affiliated with OpenAI.
-
-Codex and OpenAI are trademarks of their respective owners.
+Codex Vision is an unofficial community project and is not affiliated with or endorsed by OpenAI. Codex and OpenAI are trademarks of their respective owners.

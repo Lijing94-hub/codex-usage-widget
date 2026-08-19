@@ -1,46 +1,40 @@
-# Publishing
+# Release Guide
 
-Recommended repository name:
+Codex Vision is a Windows-only product. Release notes, screenshots, repository metadata and binaries must not claim macOS support.
 
-```text
-codex-usage-widget
-```
+## Repository Metadata
 
-Recommended GitHub description:
+Description:
 
 ```text
-Unofficial desktop widget for viewing local Codex 5-hour and 7-day usage limits.
+Windows desktop widget for Codex 7-day usage, plan expiration and reset credits.
 ```
 
-Recommended topics:
+Topics:
 
 ```text
-codex, openai, desktop-widget, usage-tracker, rate-limit, python, tkinter, windows, macos, productivity, acrylic, glassmorphism, chinese, zh-cn
+codex, openai, windows, desktop-widget, usage-tracker, rate-limit, python, tkinter, productivity, acrylic, local-first, chinese, zh-cn
 ```
 
-## Windows Release
+## Release Checklist
 
-Build the Windows archive:
+1. Update `APP_RELEASE_VERSION` and `CHANGELOG.md`.
+2. Run `python tools\generate_docs_assets.py` and visually inspect every image under `docs/`.
+3. Run `python -m py_compile codex_usage_widget.py`.
+4. Run `python codex_usage_widget.py --test --include-ui`.
+5. Run `build-windows.cmd` on Windows.
+6. Start the packaged EXE and verify refresh, drag, hover, plan-date dialog, taskbar hiding and close.
+7. Commit and push the release changes.
+8. Create and push an annotated `vX.Y.Z` tag. The release workflow builds and uploads `CodexVision-Windows.zip`.
 
-```cmd
-build-windows.cmd
-```
+## Release Notes
 
-Upload `dist\CodexVision-Windows.zip` to the GitHub release.
+Every release must state:
 
-## First Push
+- supported Windows versions;
+- visible product changes;
+- data-source or privacy changes;
+- known limitations;
+- whether the build is code-signed.
 
-Create an empty GitHub repository first, then run:
-
-```bash
-git branch -M main
-git remote add origin https://github.com/YOUR_NAME/codex-usage-widget.git
-git push -u origin main
-```
-
-If this is your first Git commit on this computer, set your identity first:
-
-```bash
-git config --global user.name "YOUR_NAME"
-git config --global user.email "YOUR_EMAIL"
-```
+Do not include local account data, private screenshots or files from `%APPDATA%\CodexUsageWidget`.
