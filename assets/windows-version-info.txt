@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 0, 1, 0),
+    prodvers=(1, 0, 1, 0),
     mask=0x3F,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Lijing94'),
           StringStruct('FileDescription', 'Codex Vision desktop usage widget'),
-          StringStruct('FileVersion', '1.0.0'),
+          StringStruct('FileVersion', '1.0.1'),
           StringStruct('InternalName', 'CodexVision'),
           StringStruct('LegalCopyright', 'Copyright (c) 2026 Lijing94. MIT License.'),
           StringStruct('OriginalFilename', 'CodexVision.exe'),
           StringStruct('ProductName', 'Codex Vision'),
-          StringStruct('ProductVersion', '1.0.0')
+          StringStruct('ProductVersion', '1.0.1')
         ]
       )
     ]),

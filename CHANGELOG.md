@@ -2,6 +2,14 @@
 
 All notable changes to Codex Vision are documented here.
 
+## [1.0.1] - 2026-08-19
+
+### Fixed
+
+- Built release packages with the Python runtime selected by GitHub Actions so Tcl/Tk data is included reliably.
+- Added a packaged-EXE self-test gate before GitHub can publish a Windows release.
+- Added a SHA-256 checksum beside every release archive.
+
 ## [1.0.0] - 2026-08-19
 
 ### Added

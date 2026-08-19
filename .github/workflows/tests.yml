@@ -50,3 +50,37 @@ jobs:
             docs/waiting-screenshot.png `
             docs/english-screenshot.png `
             docs/social-preview.png
+
+  windows-package:
+    if: github.event_name == 'pull_request'
+    needs: windows-quality
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build Windows package
+        shell: cmd
+        run: build-windows.cmd
+
+      - name: Test packaged application
+        shell: pwsh
+        run: |
+          $process = Start-Process `
+            -FilePath "dist\CodexVision\CodexVision.exe" `
+            -ArgumentList "--test", "--include-ui" `
+            -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force
+            throw "Packaged application self-test timed out."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged application self-test failed with exit code $($process.ExitCode)."
+          }

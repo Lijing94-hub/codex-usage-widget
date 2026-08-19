@@ -46,7 +46,7 @@ except Exception:  # pragma: no cover - tests cover non-UI logic without PIL
 
 APP_NAME = "Codex Vision"
 APP_VERSION = 4
-APP_RELEASE_VERSION = "1.0.0"
+APP_RELEASE_VERSION = "1.0.1"
 SINGLE_INSTANCE_MUTEX = "Local\\Lijing94.CodexUsageWidget.SingleInstance"
 _SINGLE_INSTANCE_HANDLE: int | None = None
 
