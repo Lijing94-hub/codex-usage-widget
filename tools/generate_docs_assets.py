@@ -117,7 +117,7 @@ def save_social_preview() -> None:
     screenshot = screenshot.resize((width, round(width * screenshot.height / screenshot.width)), Image.Resampling.LANCZOS)
     paste_with_shadow(canvas, screenshot, (855, 61))
 
-    draw.text((66, 590), "github.com/Lijing94-hub/codex-usage-widget", font=font(19, bold=True, latin=True), fill="#AAB6C0")
+    draw.text((66, 590), "github.com/Lijing94-hub/codex-vision", font=font(19, bold=True, latin=True), fill="#AAB6C0")
     draw.text((1012, 590), "OPEN SOURCE", font=font(17, bold=True, latin=True), fill="#65E39A")
     canvas.convert("RGB").save(DOCS / "social-preview.png", quality=96)
 
