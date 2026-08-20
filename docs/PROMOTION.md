@@ -1,8 +1,8 @@
 # Codex Vision 宣传素材
 
-项目地址：<https://github.com/Lijing94-hub/codex-usage-widget>
+项目地址：<https://github.com/Lijing94-hub/codex-vision>
 
-Windows 下载：<https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip>
+Windows 下载：<https://github.com/Lijing94-hub/codex-vision/releases/latest/download/CodexVision-Windows.zip>
 
 朋友圈海报：[`moments-poster.png`](moments-poster.png)
 
@@ -16,7 +16,7 @@ Windows 下载：<https://github.com/Lijing94-hub/codex-usage-widget/releases/la
 
 目前只做 Windows 10/11，代码和安装包都已经发布到 GitHub。欢迎体验，也欢迎给我真实反馈：
 
-<https://github.com/Lijing94-hub/codex-usage-widget>
+<https://github.com/Lijing94-hub/codex-vision>
 
 ## 极简版
 
@@ -24,13 +24,13 @@ Windows 下载：<https://github.com/Lijing94-hub/codex-usage-widget/releases/la
 
 7D 周额度、套餐到期和重置次数，一眼看清；自动同步，本地优先，不占任务栏。
 
-项目与下载：<https://github.com/Lijing94-hub/codex-usage-widget>
+项目与下载：<https://github.com/Lijing94-hub/codex-vision>
 
 ## 发给朋友
 
 这是我最近做的 Windows 小产品 Codex Vision，用来在桌面查看 Codex 周额度、套餐日期和重置次数。项目是开源的，觉得有用的话欢迎试用并给我提意见：
 
-<https://github.com/Lijing94-hub/codex-usage-widget>
+<https://github.com/Lijing94-hub/codex-vision>
 
 ## English
 
@@ -38,7 +38,7 @@ I built **Codex Vision**, a focused Windows desktop widget for Codex weekly usag
 
 It syncs through the locally installed Codex runtime, falls back to local rate-limit records, keeps the last valid snapshot visible, and stays out of the taskbar. The project has no telemetry, account system or hosted backend.
 
-Download and source: <https://github.com/Lijing94-hub/codex-usage-widget>
+Download and source: <https://github.com/Lijing94-hub/codex-vision>
 
 ## Star 说明
 

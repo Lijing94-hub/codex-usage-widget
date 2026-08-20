@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lijing94-hub/codex-usage-widget/releases/latest"><img src="https://img.shields.io/github/v/release/Lijing94-hub/codex-usage-widget?display_name=tag&style=flat-square" alt="Latest release"></a>
-  <a href="https://github.com/Lijing94-hub/codex-usage-widget/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/Lijing94-hub/codex-usage-widget/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Lijing94-hub/codex-usage-widget?style=flat-square" alt="MIT License"></a>
+  <a href="https://github.com/Lijing94-hub/codex-vision/releases/latest"><img src="https://img.shields.io/github/v/release/Lijing94-hub/codex-vision?display_name=tag&style=flat-square" alt="Latest release"></a>
+  <a href="https://github.com/Lijing94-hub/codex-vision/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/Lijing94-hub/codex-vision/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Lijing94-hub/codex-vision?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4?style=flat-square" alt="Windows 10 and 11">
-  <a href="https://github.com/Lijing94-hub/codex-usage-widget/stargazers"><img src="https://img.shields.io/github/stars/Lijing94-hub/codex-usage-widget?style=flat-square" alt="GitHub stars"></a>
+  <a href="https://github.com/Lijing94-hub/codex-vision/stargazers"><img src="https://img.shields.io/github/stars/Lijing94-hub/codex-vision?style=flat-square" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@ Codex Vision 把最重要的 Codex 用量信息放在桌面上：7D 周额度、
 
 ## Download
 
-[**Download CodexVision-Windows.zip**](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest/download/CodexVision-Windows.zip)
+[**Download CodexVision-Windows.zip**](https://github.com/Lijing94-hub/codex-vision/releases/latest/download/CodexVision-Windows.zip)
 
 解压后双击 `install.cmd` 完成安装。发布包自带 Python 运行环境，不需要另外安装依赖。
 
@@ -60,7 +60,7 @@ The widget refreshes the display every few seconds, throttles app-server calls, 
 
 ### Recommended
 
-1. Download the latest Windows zip from [Releases](https://github.com/Lijing94-hub/codex-usage-widget/releases/latest).
+1. Download the latest Windows zip from [Releases](https://github.com/Lijing94-hub/codex-vision/releases/latest).
 2. Extract the complete folder.
 3. Double-click `install.cmd` once.
 4. Confirm the Windows taskbar pin request when Codex Vision opens.
